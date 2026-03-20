@@ -10,14 +10,9 @@ Bare Metal *(no_std)* **ESP32S3-BOX3** project written in Rust.
 <details><summary><strong>
 Usage:
 </strong></summary>
-
-
-> [!CAUTION]
-> __Code is under active development!__ <br>
-> **It may not behave is expected.** 
 <br>
 
-You can build and flash your ESP32-S3-BOX-3 using `micro-deploy`:  
+You can build and flash your ESP32-S3-BOX-3 using [micro-deploy](https://github.com/QuackHack-McBlindy/micro-deploy):  
 
 ```bash
 nix run github:QUackHack-McBlindy/micro-deploy -- \
@@ -25,8 +20,6 @@ nix run github:QUackHack-McBlindy/micro-deploy -- \
   ~/wifi.env \
   /dev/ttyACM0
 ```
-
-*Setting up the enviorment and building may take a while..*
 
 
 </details>
