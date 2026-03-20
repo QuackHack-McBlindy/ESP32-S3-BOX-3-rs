@@ -1,0 +1,90 @@
+[package]
+name = "esp32s3-box3"
+rust-version = "1.88"
+edition = "2024"
+version = "0.1.0"
+
+[dependencies]
+# ESP Ecosystem
+esp-hal = { version = "~1.0", features = ["defmt", "esp32s3", "unstable"] }
+esp-rtos = { version = "0.2.0", features = [
+  "defmt",
+  "embassy",
+  "esp-alloc",
+  "esp-radio",
+  "esp32s3",
+] }
+esp-alloc = { version = "0.9.0", features = ["defmt"] } # Mem
+
+# ESP-IDF bootloader
+esp-bootloader-esp-idf = { version = "0.4.0", features = ["defmt", "esp32s3"] }
+
+
+# LCD display
+ili9341 = "0.6.0"
+# Bluetooth
+bt-hci = "0.6.0"
+
+embedded-io = { version = "0.7.1", features = ["defmt"] }
+embedded-io-async = { version = "0.7.0", features = ["defmt"] }
+
+# Async
+embassy-executor = { version = "0.9.1", features = ["defmt"] }
+embassy-time = { version = "0.5.0", features = ["defmt"] }
+
+# WIFI
+esp-radio = { version = "0.17.0", features = [
+  "ble",
+  "coex",
+  "defmt",
+  "esp-alloc",
+  "esp32s3",
+  "smoltcp",
+  "unstable",
+  "wifi",
+] }
+embassy-net = { version = "0.7.1", features = [
+  "defmt",
+  "dhcpv4",
+  "medium-ethernet",
+  "tcp",
+  "udp",
+] }
+smoltcp = { version = "0.12.0", default-features = false, features = [
+  "defmt",
+  "medium-ethernet",
+  "multicast",
+  "proto-dhcpv4",
+  "proto-dns",
+  "proto-ipv4",
+  "socket-dns",
+  "socket-icmp",
+  "socket-raw",
+  "socket-tcp",
+  "socket-udp",
+] }
+trouble-host = { version = "0.5.0", features = ["gatt"] }
+
+# Misc/logging
+critical-section = "1.2.0"
+static_cell = "2.1.1"
+defmt = "1.0.1"
+esp-println = { version = "0.16.1", features = ["defmt-espflash", "esp32s3"] }
+
+# HTTP API
+picoserve = "0.18.0"
+
+
+
+[profile.dev]
+opt-level = "s"
+
+[profile.release]
+codegen-units = 1
+debug = 2
+debug-assertions = false
+incremental = false
+lto = 'fat'
+opt-level = 's'
+overflow-checks = false
+
