@@ -11,6 +11,7 @@ Bare Metal *(no_std)* **ESP32S3-BOX3** project written in Rust.
 Usage:
 </strong></summary>
 
+
 > [!CAUTION]
 > __Code is under active development!__ <br>
 > **It may not behave is expected.** 
@@ -27,11 +28,10 @@ nix run github:QUackHack-McBlindy/micro-deploy -- \
 
 *Setting up the enviorment and building may take a while..*
 
-<br>
 
 </details>
 
-<br>
+
 
 ### **Roadmap**
 
@@ -46,6 +46,7 @@ nix run github:QUackHack-McBlindy/micro-deploy -- \
 - ❌ Internal HTTP API (+ basic frontend?)
 - ✅ Backend
 
+<br>
 
 ### **📶 Specs**
 

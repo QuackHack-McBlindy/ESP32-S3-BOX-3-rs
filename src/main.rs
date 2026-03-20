@@ -42,6 +42,79 @@ const PASSWORD: &str = env!("WIFI_PASSWORD");
 esp_bootloader_esp_idf::esp_app_desc!();
 
 
+
+// TEMP/HUM SENSOR
+async fn read_aht20_async(
+    i2c: &mut I2c<'_, esp_hal::Blocking>,
+) -> Option<(f32, f32)> {
+    let init_cmd = [0xBE, 0x08, 0x00];
+    i2c.write(0x38, &init_cmd).ok()?;
+    Timer::after(Duration::from_millis(10)).await;
+
+    let measure_cmd = [0xAC, 0x33, 0x00];
+    i2c.write(0x38, &measure_cmd).ok()?;
+    Timer::after(Duration::from_millis(80)).await;
+
+    let mut buf = [0u8; 6];
+    i2c.read(0x38, &mut buf).ok()?;
+
+    if buf[0] & 0x80 != 0 {
+        return None;
+    }
+
+    let raw_hum = ((buf[1] as u32) << 12) | ((buf[2] as u32) << 4) | ((buf[3] as u32) >> 4);
+    let raw_temp = (((buf[3] as u32) & 0x0F) << 16)
+        | ((buf[4] as u32) << 8)
+        | (buf[5] as u32);
+
+    let humidity = (raw_hum as f32) * 100.0 / (1 << 20) as f32;
+    let temperature = (raw_temp as f32) * 200.0 / (1 << 20) as f32 - 50.0;
+
+    Some((temperature, humidity))
+}
+
+#[embassy_executor::task]
+async fn sensor_task(mut i2c: I2c<'static, esp_hal::Blocking>) {
+    loop {
+        if let Some((temp, hum)) = read_aht20_async(&mut i2c).await {
+            info!("Temp: {=f32} °C, Hum: {=f32} %", temp, hum);
+        } else { info!("AHT20 read failed"); }
+        Timer::after(Duration::from_secs(10)).await;
+    }
+}
+
+// MOTION SENSOR
+#[embassy_executor::task]
+async fn occupancy_task(mut occupancy: Input<'static>) {
+    let mut last = occupancy.is_high();
+    loop {
+        let current = occupancy.is_high();
+        
+        if current != last {
+            if current { 
+                info!("Motion!");
+            } else {
+                info!("No motion.");
+            }
+            last = current;
+        }
+        Timer::after(Duration::from_millis(50)).await;
+    }
+}
+
+// BUTTONS
+#[embassy_executor::task]
+async fn button_task(button: Input<'static>) {
+    loop {
+        if button.is_low() {
+            info!("Top-Left Button pressed!");
+            Timer::after(Duration::from_millis(200)).await;
+            while button.is_low() { Timer::after(Duration::from_millis(10)).await; }
+        }
+        Timer::after(Duration::from_millis(50)).await;
+    }
+}
+
 // MAIN
 #[allow(clippy::large_stack_frames)]
 #[esp_rtos::main]
@@ -161,27 +234,32 @@ async fn main(spawner: Spawner) -> ! {
         peripherals.WIFI,
         radio_config,
     )
-    .expect("Wi‑Fi - Failed to initialize Wi-Fi controller");
+    .expect("Wi‑Fi - ❌ Failed to initialize Wi-Fi controller");
 
     // set operation mode
     wifi_controller
         .set_config(&mode_config)
-        .expect("Wi‑Fi - Failed to set Wi‑Fi configuration");
+        .expect("Wi‑Fi - ❌ Failed to set Wi‑Fi configuration");
 
     // start the wifi
     wifi_controller.start().expect("Failed to start Wi‑Fi");
-    info!("Wi‑Fi - connecting...");
+    info!("Wi‑Fi - ⌛ connecting...");
     // connect
     match wifi_controller.connect_async().await {
         Ok(()) => { info!("Wi‑Fi - ✅ Connected successfully!"); }
-        Err(e) => { info!("Wi‑Fi - Connection failed: {:?}", e); }
+        Err(e) => { info!("Wi‑Fi - ❌ Connection failed: {:?}", e); }
     }
 
-    // TODO: tasks
+    // tasks
     let _ = spawner;
 
+    spawner.spawn(sensor_task(i2c_bus_b)).unwrap();
+    spawner.spawn(occupancy_task(occupancy)).unwrap();
+    spawner.spawn(button_task(button_top_left)).unwrap();
+
     loop {
-        info!("Hej världen!");
-        Timer::after(Duration::from_secs(45)).await;
-    }
+        Timer::after(Duration::from_secs(60)).await;
+    }    
 }
+
+
