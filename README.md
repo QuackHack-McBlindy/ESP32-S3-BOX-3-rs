@@ -7,16 +7,14 @@ Bare Metal *(no_std)* **ESP32S3-BOX3** project written in Rust.
 <img src="./resource/device.png" width="200px"/>
 
 
-
+<details><summary><strong>
+Usage:
+</strong></summary>
 
 > [!CAUTION]
 > __Code is under active development!__ <br>
 > **It may not behave is expected.** 
 <br>
-
-<details><summary><strong>
-Usage:
-</strong></summary>
 
 You can build and flash your ESP32-S3-BOX-3 using `micro-deploy`:  
 
@@ -29,8 +27,11 @@ nix run github:QUackHack-McBlindy/micro-deploy -- \
 
 *Setting up the enviorment and building may take a while..*
 
+<br>
+
 </details>
 
+<br>
 
 ### **Roadmap**
 
@@ -117,24 +118,24 @@ nix run github:QUackHack-McBlindy/micro-deploy -- \
 - Boot
 - Mute (GPIO 46)
 
-### **i2c**
+### **I2C**
 
 **Bus A**
-100kHz
-sda: GPIO 08 (pullup_enabled)
-scl: GPIO 18 (pullup_enabled)
+- 100kHz
+- sda: GPIO 08 (pullup_enabled)
+- scl: GPIO 18 (pullup_enabled)
 
 **Bus B**
-50kHz
-sda: GPIO 41 (pullup_enabled)
-scl: GPIO 40 (pullup_enabled)
+- 50kHz
+- sda: GPIO 41 (pullup_enabled)
+- scl: GPIO 40 (pullup_enabled)
 
 
-### **i2s**
+### **i2S**
 
-lrclk_pin: GPIO45 (ignore_strapping_warning)
-bclk_pin: GPIO17
-mclk_pin: GPIO2
+- lrclk_pin: GPIO45 (ignore_strapping_warning)  
+- bclk_pin: GPIO17
+- mclk_pin: GPIO2
 
 ### **Audio ADC (es7210)**
 
@@ -146,6 +147,8 @@ mclk_pin: GPIO2
 - I2C Bus A
 - 16bit, 48000 sample rate
 
+
+<br>
 
 ## **🪑 Table**
 
@@ -181,5 +184,6 @@ mclk_pin: GPIO2
 ### **License**
 
 <br>
+
 **MIT**
 
