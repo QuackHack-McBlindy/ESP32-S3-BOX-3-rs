@@ -250,6 +250,40 @@ async fn main(spawner: Spawner) -> ! {
         Err(e) => { info!("Wi‑Fi - ❌ Connection failed: {:?}", e); }
     }
 
+
+//////////////////////////////
+    // I2S
+    use esp_hal::{
+        dma_buffers,
+        dma::DmaRxBuf,
+        i2s::master::{I2s, Config as I2sConfig, DataFormat},
+    };
+
+    const SAMPLE_RATE: u32 = 16_000;
+    const BUFFER_SIZE: usize = 4096;
+
+    // DMA buffers
+    let (rx_buffer, rx_descriptors, _, _) = dma_buffers!(BUFFER_SIZE);
+
+    let i2s_config = I2sConfig::default()
+        .with_sample_rate(Rate::from_hz(16_000))
+        .with_data_format(DataFormat::Data16Channel16);
+
+    let mut i2s = I2s::new(
+        peripherals.I2S0,
+        peripherals.DMA_CH0,
+        i2s_config,
+    ).unwrap()
+    .with_mclk(i2s_mclk); 
+
+    let mut i2s_rx = i2s.i2s_rx
+        .with_bclk(i2s_bclk)
+        .with_ws(i2s_lrclk)
+        .with_din(i2s_din); 
+
+      
+   
+//////////////////////////////////////
     // tasks
     let _ = spawner;
 
