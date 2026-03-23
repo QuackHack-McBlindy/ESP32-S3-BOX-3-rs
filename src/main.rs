@@ -3,15 +3,24 @@
 #![deny(clippy::mem_forget)]
 #![deny(clippy::large_stack_frames)]
 
-use defmt::info;
+use defmt::{info, Debug2Format};
+
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
+use embassy_sync::blocking_mutex::CriticalSectionMutex;
+use embassy_sync::mutex::Mutex;
+
 use esp_hal::{
+    main,
+    Blocking,
+    dma_buffers,
+    dma::{DmaRxBuf, DmaDescriptor},
     clock::CpuClock,
     delay::Delay,
     gpio::{Input, InputConfig, Pull},
     i2c::master::{Config as I2cConfig, I2c},
-    main,
+    i2s::master::{I2s, I2sRx, Config as I2sConfig, DataFormat, Channels},
+    i2s::master::asynch::I2sReadDmaTransferAsync,
     ledc::channel::ChannelIFace,
     ledc::timer::TimerIFace,
     ledc::{LSGlobalClkSource, Ledc, LowSpeed},
@@ -19,13 +28,27 @@ use esp_hal::{
     timer::timg::TimerGroup,
 };
 
+// i2C bus sharing
+use core::cell::RefCell;
+use critical_section::Mutex as CsMutex;
+use embedded_hal_bus::i2c::CriticalSectionDevice;
+use embedded_hal::i2c::I2c as HalI2c;
+
+
 use esp_println as _;
 
+// WiFi
 use esp_radio::wifi::{
     ClientConfig,
     ModeConfig,
     Config,
 };
+
+// load modules
+mod es7210; // microphone audio codec
+mod es8311; // speaker audio codec
+// mod aht20; // temperature & humidity sensor
+
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -34,19 +57,23 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
 
 // PSRAM?
 extern crate alloc;
+use alloc::boxed::Box;
 
 // load WiFi credentials from env vars at build time
 const SSID: &str = env!("WIFI_SSID");
 const PASSWORD: &str = env!("WIFI_PASSWORD");
 
+const SAMPLE_RATE: u32 = 16_000;
+const BUFFER_SIZE: usize = 4096;
+const SAMPLE_COUNT: usize = 256;
+  
+
+// bootloader
 esp_bootloader_esp_idf::esp_app_desc!();
 
 
-
 // TEMP/HUM SENSOR
-async fn read_aht20_async(
-    i2c: &mut I2c<'_, esp_hal::Blocking>,
-) -> Option<(f32, f32)> {
+async fn read_aht20_async<I2C: HalI2c>(i2c: &mut I2C) -> Option<(f32, f32)> {
     let init_cmd = [0xBE, 0x08, 0x00];
     i2c.write(0x38, &init_cmd).ok()?;
     Timer::after(Duration::from_millis(10)).await;
@@ -74,24 +101,26 @@ async fn read_aht20_async(
 }
 
 #[embassy_executor::task]
-async fn sensor_task(mut i2c: I2c<'static, esp_hal::Blocking>) {
+async fn sensor_task(i2c_mutex: &'static CsMutex<RefCell<I2c<'static, esp_hal::Blocking>>>) {
     loop {
+        let mut i2c = CriticalSectionDevice::new(i2c_mutex);
         if let Some((temp, hum)) = read_aht20_async(&mut i2c).await {
             info!("Temp: {=f32} °C, Hum: {=f32} %", temp, hum);
-        } else { info!("AHT20 read failed"); }
+        } else {
+            info!("AHT20 read failed");
+        } // i2c dropped
+        
         Timer::after(Duration::from_secs(10)).await;
     }
 }
 
-// MOTION SENSOR
 #[embassy_executor::task]
-async fn occupancy_task(mut occupancy: Input<'static>) {
+async fn occupancy_task(occupancy: Input<'static>) {
     let mut last = occupancy.is_high();
     loop {
         let current = occupancy.is_high();
-        
         if current != last {
-            if current { 
+            if current {
                 info!("Motion!");
             } else {
                 info!("No motion.");
@@ -102,18 +131,44 @@ async fn occupancy_task(mut occupancy: Input<'static>) {
     }
 }
 
-// BUTTONS
 #[embassy_executor::task]
 async fn button_task(button: Input<'static>) {
     loop {
         if button.is_low() {
             info!("Top-Left Button pressed!");
             Timer::after(Duration::from_millis(200)).await;
-            while button.is_low() { Timer::after(Duration::from_millis(10)).await; }
+            while button.is_low() {
+                Timer::after(Duration::from_millis(10)).await;
+            }
         }
         Timer::after(Duration::from_millis(50)).await;
     }
 }
+
+
+#[embassy_executor::task]
+async fn audio_capture_task(mut i2s_rx: I2sRx<'static, Blocking>) {
+    let mut samples = [0u16; SAMPLE_COUNT];
+
+    loop {
+        if let Err(e) = i2s_rx.read_words(&mut samples) {
+            info!("I2S read error: {:?}", e);
+            continue;
+        }
+
+        let raw_bytes = unsafe {
+            core::slice::from_raw_parts(
+                samples.as_ptr().cast::<u8>(),
+                core::mem::size_of_val(&samples),
+            )
+        };
+        let first_four = &raw_bytes[..4];
+        info!("Audio: {:02X} {:02X} {:02X} {:02X} ...",
+            first_four[0], first_four[1], first_four[2], first_four[3]);
+    }
+}
+
+
 
 // MAIN
 #[allow(clippy::large_stack_frames)]
@@ -124,9 +179,10 @@ async fn main(spawner: Spawner) -> ! {
 
     esp_alloc::heap_allocator!(#[esp_hal::ram(reclaimed)] size: 73744);
 
+
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     esp_rtos::start(timg0.timer0);
-    info!("Embassy initialized!");
+    info!("Started ESP32-S3-BOX-3!");
 
     //////////////////////////////////////////////////
     // GPIO PINS
@@ -172,9 +228,10 @@ async fn main(spawner: Spawner) -> ! {
     .unwrap()
     .with_sda(i2c_a_sda)
     .with_scl(i2c_a_scl);    
-    
+
+
     // I2C BUS B
-    let mut i2c_bus_b = I2c::new(
+    let mut i2c_b = I2c::new(
         peripherals.I2C1,
         I2cConfig::default().with_frequency(Rate::from_khz(50)),
     )
@@ -182,7 +239,57 @@ async fn main(spawner: Spawner) -> ! {
     .with_sda(i2c_b_sda)
     .with_scl(i2c_b_scl);
 
-    let es8311_addr = 0x18;
+    // LOCK & SHARE BUSSES
+    let i2c_a_mutex = Box::leak(Box::new(CsMutex::new(RefCell::new(i2c_a))));
+    let i2c_b_mutex = Box::leak(Box::new(CsMutex::new(RefCell::new(i2c_b))));
+
+
+    let es7210 = es7210::Es7210::new(0x40);
+    let es8311 = es8311::Es8311::new(0x18);
+
+    { // configure audio codecs
+        let mut i2c = CriticalSectionDevice::new(&i2c_a_mutex);
+
+        // ES7210 (ADC)
+        let codec_cfg = es7210::CodecConfig {
+            sample_rate_hz: 16000,
+            mclk_ratio: 256,
+            i2s_format: es7210::I2sFormat::I2S,
+            bit_width: es7210::I2sBits::Bits16,
+            mic_bias: es7210::MicBias::V2_87,
+            mic_gain: es7210::MicGain::Gain30dB,
+            tdm_enable: false,
+        };
+        match es7210.config_codec(&mut i2c, &codec_cfg) {
+            Ok(()) => info!("ES7210 initialized successfully"),
+            Err(e) => info!("ES7210 init failed: {:?}", Debug2Format(&e)),
+        }
+        if let Err(e) = es7210.config_volume(&mut i2c, 20) {
+            info!("ES7210 volume set failed: {:?}", Debug2Format(&e));
+        }
+
+        // ES8311 (DAC)
+        let clock_cfg = es8311::ClockConfig {
+            mclk_inverted: false,
+            sclk_inverted: false,
+            mclk_from_mclk_pin: true,
+            mclk_frequency: 4096000,
+            sample_frequency: 16000,
+        };
+        match es8311.init(
+            &mut i2c,
+            &clock_cfg,
+            es8311::Resolution::Bits16,
+            es8311::Resolution::Bits16,
+        ) {
+            Ok(()) => info!("ES8311 initialised successfully"),
+            Err(e) => info!("ES8311 init failed: {:?}", Debug2Format(&e)),
+        }
+        let _ = es8311.voice_volume_set(&mut i2c, 80, None);
+        let _ = es8311.voice_mute(&mut i2c, false);
+    } // release i2c
+    
+
 
     /////////////////////////////////////////
     // LEDC
@@ -213,7 +320,6 @@ async fn main(spawner: Spawner) -> ! {
         })
         .unwrap();
 
-    ////////////////////////
 
     ////////////////////////
     // WIFI
@@ -253,15 +359,7 @@ async fn main(spawner: Spawner) -> ! {
 
 //////////////////////////////
     // I2S
-    use esp_hal::{
-        dma_buffers,
-        dma::DmaRxBuf,
-        i2s::master::{I2s, Config as I2sConfig, DataFormat},
-    };
-
-    const SAMPLE_RATE: u32 = 16_000;
-    const BUFFER_SIZE: usize = 4096;
-
+//////////////////////////////
     // DMA buffers
     let (rx_buffer, rx_descriptors, _, _) = dma_buffers!(BUFFER_SIZE);
 
@@ -279,21 +377,38 @@ async fn main(spawner: Spawner) -> ! {
     let mut i2s_rx = i2s.i2s_rx
         .with_bclk(i2s_bclk)
         .with_ws(i2s_lrclk)
-        .with_din(i2s_din); 
-
+        .with_din(i2s_din)
+        .build(rx_descriptors);
       
-   
+         
+    // let mut dac_stream = i2s.i2s_tx
+    //    .with_bclk(i2s_bclk)
+    //    .with_ws(i2s_lrclk)
+    //    .with_dout(i2s_dout)
+    //    .build();
+
+    // PLAY BOOT SOUND
+    // let samples: [i16; 1000] = core::array::from_fn(|i| {
+    //    let t = i as f32 / 16000.0;
+    //    (32767.0 * (2.0 * core::f32::consts::PI * 440.0 * t).sin()) as i16
+    // });
+
+    // dac_stream.write(&samples).await;
 //////////////////////////////////////
     // tasks
     let _ = spawner;
 
-    spawner.spawn(sensor_task(i2c_bus_b)).unwrap();
+    // MONITOR
+    // sensors
+    spawner.spawn(sensor_task(i2c_b_mutex)).unwrap();
+    // motion
     spawner.spawn(occupancy_task(occupancy)).unwrap();
+    // buttons
     spawner.spawn(button_task(button_top_left)).unwrap();
-
+    // microphones
+    //spawner.spawn(audio_capture_task(i2s_rx)).unwrap();
+    
     loop {
         Timer::after(Duration::from_secs(60)).await;
     }    
 }
-
-

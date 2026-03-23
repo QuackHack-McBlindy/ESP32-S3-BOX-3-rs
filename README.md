@@ -2,11 +2,11 @@
 
 [![Sponsors](https://img.shields.io/github/sponsors/QuackHack-McBlindy?logo=githubsponsors&label=?&style=flat&labelColor=ff1493&logoColor=fff&color=rgba(234,74,170,0.5) "")](https://github.com/sponsors/QuackHack-McBlindy)
 
-Bare Metal *(no_std)* **ESP32S3-BOX3** project written in Rust.   
 
 <img src="./resource/device.png" width="200px"/>
 
-
+Bare Metal *(no_std)* **ESP32S3-BOX3** firmware written in Rust.   
+Project is currently under active development.  
 
 
 
@@ -19,7 +19,7 @@ Bare Metal *(no_std)* **ESP32S3-BOX3** project written in Rust.
 - ✅ Async 
 - ✅ WIFI
 - ❌ Over The Air firmware updates
-- ✅ Sensors
+- ✅ Sensors (Presence, Temperature, Humidity)
 - ❌ Battery Sensor
 - ✅ Display
 - ❌ Touch
@@ -43,6 +43,7 @@ Bare Metal *(no_std)* **ESP32S3-BOX3** project written in Rust.
 ### **🖥️ Display (ILI9341)**
 
 - SPI
+- Interface speed: 40 MHz
 - Backlight output GPIO: 47 (LEDC)
 - 2.4" LCD
 - 320x240
@@ -52,35 +53,44 @@ Bare Metal *(no_std)* **ESP32S3-BOX3** project written in Rust.
 - GPIO 3
 - Adress: `0x5D`
 - i2c bus a
-- Captive Touch
+- 10 Point Captive Touch
 
 ### **📢 Amplifier (NS4150)**
 
 - Digital Output GPIO: 15 (I2S output) 
 - 16-bit, 48 kHz sample rate
-- built-in 8Ω/1W speaker 
+- built-in 8Ω/1W speaker (NS4150)
+- Audio Codec (ES8311)
 - Channel Left
 
 ### **🎙️ Microphone (ES7210)**
 
 - Digital Input GPIO: 16 (I2S input) 
 - Dual digital microphones
-- Audio Codec (ES8311)
+- Audio Codec (ES7210)
 - 16-bit, 16 kHz sample rate
 
-### **🕵️ Motion Sensor (...?)**
+### **🕵️ Presence Sensor (MS58-3909S68U4)**
 
-- Occupancy (Radar) at GPIO 21  
-
+- Radar at GPIO: 21  
+- Frequency band: 5.8 GHz
+- 2 meter range
 
 ### **🌡️ Temperature Sensor (AHT20)**
 
+- Temperature Sensor
 - Humidity Sensor
+
+### **🧭 Gyroscope (ICM-42607-P)**
+
+- 3-axis Gyroscope
+- 3-axis Accelerometer 
+
 
 ### **📡 Infrared (IR)**
 
-- Transmitter (...)
-- Receiver (IRM-H638T ?)
+- Emitter (IRM-H638T)
+- Receiver (IR-6721C/TR8) 
 
 
 ### **🧩 Extensions** 
