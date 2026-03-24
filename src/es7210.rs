@@ -189,7 +189,7 @@ impl Es7210 {
         Ok(())
     }
 
-    pub fn config_volume<I2C, E>(
+    pub fn gain_set<I2C, E>(
         &self,
         i2c: &mut I2C,
         volume_db: i8,

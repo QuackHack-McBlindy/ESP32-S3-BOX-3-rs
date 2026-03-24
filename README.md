@@ -19,8 +19,7 @@ Project is currently under active development.
 - ✅ Async 
 - ✅ WIFI
 - ❌ Over The Air firmware updates
-- ✅ Sensors (Presence, Temperature, Humidity)
-- ❌ Battery Sensor
+- ✅ Sensors (Presence, Battery, Temperature, Humidity)
 - ✅ Display
 - ❌ Touch
 - ❌ Voice Assistant functionality (I2S)

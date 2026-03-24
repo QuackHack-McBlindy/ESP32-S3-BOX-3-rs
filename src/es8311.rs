@@ -367,7 +367,7 @@ impl Es8311 {
     }
 
     /// Set output volume (0 to 100). Returns the actual volume set.
-    pub fn voice_volume_set<I2C, E>(
+    pub fn volume_set<I2C, E>(
         &self,
         i2c: &mut I2C,
         volume: u8,
@@ -389,7 +389,7 @@ impl Es8311 {
     }
 
     /// Get current output volume (0 to 100).
-    pub fn voice_volume_get<I2C, E>(
+    pub fn volume_get<I2C, E>(
         &self,
         i2c: &mut I2C,
     ) -> Result<u8, Error<E>>
@@ -405,7 +405,7 @@ impl Es8311 {
     }
 
     /// Mute or unmute the output.
-    pub fn voice_mute<I2C, E>(
+    pub fn mute<I2C, E>(
         &self,
         i2c: &mut I2C,
         mute: bool,
@@ -422,8 +422,8 @@ impl Es8311 {
         self.write_reg(i2c, DAC_REG31, reg31)
     }
 
-    /// Set fade rate for voice (DAC).
-    pub fn voice_fade<I2C, E>(
+    /// Set fade rate for DAC
+    pub fn fade<I2C, E>(
         &self,
         i2c: &mut I2C,
         fade: Fade,
