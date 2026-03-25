@@ -12,6 +12,7 @@ use embassy_sync::blocking_mutex::CriticalSectionMutex;
 use embassy_sync::mutex::Mutex;
 
 use esp_hal::{
+    Async,
     main,
     Blocking,
     dma_buffers,
@@ -23,6 +24,7 @@ use esp_hal::{
     peripherals::ADC1,
     i2c::master::{Config as I2cConfig, I2c},
     i2s::master::{I2s, I2sRx, Config as I2sConfig, DataFormat, Channels},
+    i2s::master::asynch::I2sWriteDmaTransferAsync,
     i2s::master::asynch::I2sReadDmaTransferAsync,
     spi::master::{Config as SpiConfig, Spi},
     ledc::channel::ChannelIFace,
@@ -358,7 +360,10 @@ async fn main(spawner: Spawner) -> ! {
 
     // I2S Audio setup 
     // DMA buffers
-    let (rx_buffer, rx_descriptors, _, _) = dma_buffers!(BUFFER_SIZE);
+    //let (rx_buffer, rx_descriptors, _, _) = dma_buffers!(BUFFER_SIZE);
+    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) =
+        dma_buffers!(BUFFER_SIZE);
+
 
     let i2s_config = I2sConfig::default()
         .with_sample_rate(Rate::from_hz(16_000))
@@ -369,15 +374,24 @@ async fn main(spawner: Spawner) -> ! {
         peripherals.DMA_CH0,
         i2s_config,
     ).unwrap()
-    .with_mclk(i2s_mclk); 
+    .with_mclk(i2s_mclk)
+    .into_async();
 
     let mut i2s_rx = i2s.i2s_rx
         .with_bclk(i2s_bclk)
         .with_ws(i2s_lrclk)
         .with_din(i2s_din)
         .build(rx_descriptors);
-      
-        
+
+    let mut i2s_tx = i2s.i2s_tx
+        // clocks are already configured above
+        //.with_bclk(i2s_bclk)
+        //.with_ws(i2s_lrclk)
+        .with_dout(i2s_dout)
+        .build(tx_descriptors);
+
+
+       
     // TASKS
     let _ = spawner;
 
@@ -388,7 +402,7 @@ async fn main(spawner: Spawner) -> ! {
     // buttons
     spawner.spawn(buttons::top_left_button_task(button_top_left)).unwrap();
     // microphones
-    //spawner.spawn(audio_input::audio_capture_task(i2s_rx)).unwrap();
+    spawner.spawn(audio_input::audio_capture_task(i2s_rx)).unwrap();
     // display
     spawner.spawn(display_task(display)).unwrap();
 
@@ -401,6 +415,6 @@ async fn main(spawner: Spawner) -> ! {
             .clamp(0.0, 100.0) as u8;
 
         info!("Battery: {}%,  ({=f32} V)", percentage, battery_voltage);
-        Timer::after(Duration::from_secs(60)).await;
+        Timer::after(Duration::from_secs(60)).await; // every minute
     }
 }

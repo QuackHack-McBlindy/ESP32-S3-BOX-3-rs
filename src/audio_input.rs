@@ -1,29 +1,36 @@
 use defmt::info;
 use embassy_executor::task;
-use embassy_time::Duration;
-use esp_hal::i2s::master::I2sRx;
-use esp_hal::Blocking;
+use esp_hal::i2s::master::{
+    I2sRx,
+    asynch::I2sReadDmaTransferAsync,
+};
+use esp_hal::Async;
 
 const SAMPLE_COUNT: usize = 256;
+const BUFFER_SIZE: usize = SAMPLE_COUNT * 2;
 
 #[task]
-pub async fn audio_capture_task(mut i2s_rx: I2sRx<'static, Blocking>) {
-    let mut samples = [0u16; SAMPLE_COUNT];
+pub async fn audio_capture_task(
+    mut i2s_rx: I2sRx<'static, Async>
+) {
+    let mut buffer = [0u8; BUFFER_SIZE];
 
     loop {
-        if let Err(e) = i2s_rx.read_words(&mut samples) {
-            info!("I2S read error: {:?}", e);
-            continue;
-        }
+        match i2s_rx.read_dma_async(&mut buffer).await {
+            Ok(()) => {
+                let samples: &[u16] = unsafe {
+                    core::slice::from_raw_parts(
+                        buffer.as_ptr() as *const u16,
+                        SAMPLE_COUNT,
+                    )
+                };
 
-        let raw_bytes = unsafe {
-            core::slice::from_raw_parts(
-                samples.as_ptr().cast::<u8>(),
-                core::mem::size_of_val(&samples),
-            )
-        };
-        let first_four = &raw_bytes[..4];
-        info!("Audio: {:02X} {:02X} {:02X} {:02X} ...",
-            first_four[0], first_four[1], first_four[2], first_four[3]);
+                let first = samples[0];
+                let second = samples[1];
+
+                info!("Audio: {} {}", first, second);
+            }
+            Err(e) => { info!("I2S read error: {:?}", e); }
+        }
     }
 }
