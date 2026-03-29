@@ -1,8 +1,8 @@
 [package]
-name = "esp32s3-box3"
+name = "ESP32-S3-BOX-3"
 rust-version = "1.88"
 edition = "2024"
-version = "0.1.0"
+version = "0.1.1"
 
 [dependencies]
 # ESP Ecosystem
@@ -74,6 +74,9 @@ esp-println = { version = "0.16.1", features = ["defmt-espflash", "esp32s3"] }
 # HTTP API
 picoserve = "0.18.0"
 
+# Math
+micromath = "2.1.0"
+libm = "0.2"
 
 
 [profile.dev]

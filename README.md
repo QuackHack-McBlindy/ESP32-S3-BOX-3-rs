@@ -1,32 +1,98 @@
-# **ESP32S3-BOX3**
+# **ESP32-S3-BOX-3-rs**
 
-[![Sponsors](https://img.shields.io/github/sponsors/QuackHack-McBlindy?logo=githubsponsors&label=?&style=flat&labelColor=ff1493&logoColor=fff&color=rgba(234,74,170,0.5) "")](https://github.com/sponsors/QuackHack-McBlindy)
+[![Sponsors](https://img.shields.io/github/sponsors/QuackHack-McBlindy?logo=githubsponsors&label=Sponsor&style=flat&labelColor=ff1493&logoColor=fff&color=rgba(234,74,170,0.5) "")](https://github.com/sponsors/QuackHack-McBlindy) [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Sponsor?style=flat&logo=buymeacoffee&logoColor=fff&labelColor=ff1493&color=ff1493)](https://buymeacoffee.com/quackhackmcblindy)
 
 
 <img src="./resource/device.png" width="200px"/>
 
-Bare Metal *(no_std)* **ESP32S3-BOX3** firmware written in Rust.   
-Project is currently under active development.  
+Bare Metal *(no_std)* **ESP32-S3-BOX-3** firmware written in Rust.   
+Project is in early stage development.  
 
+
+
+### **Features**
+
+- Sensors *(presence, temperature, humidity, battery status, etc)*
+- MQTT state reporting
+- Voice Assistant
+- [Backend](https://github.com/QuackHack-McBlindy/yo)
+  - Wake Word Detection
+  - Speech To Text
+  - Text To Speech
+  - Voice Command Execution
+
+<br>
+
+
+### **Roadmap**
+
+- [ ] Minimal UI (settings, clock, media player, TV remote)
+- [x] Speaker
+- [ ] Internal API
+- [ ] OTA
+- [ ] Tighten security
+
+<br>
+
+
+## **Installation**
+
+<details><summary><strong>
+❄️ Using flakes (recommended)
+</strong></summary>
+
+*Coming soon...*
+
+</details>
+
+
+<details><summary><strong>
+📦 Building from source
+</strong></summary>
+
+*Coming soon...*
+
+</details>
+
+
+<details><summary><strong>
+🐋 Docker (simple)
+</strong></summary>
+
+```bash
+$ git clone https://github.com/QuackHack-McBlindy/ESP32-S3-BOX-3-rs
+$ cd ESP32-S3-BOX-3-rs
+```
+
+Configure WiFi and other required seetings in the example `.env` file.  
+
+```bash
+mv .env.example .env
+nano .env
+```
+
+Edit `docker-compose.yaml` to use your correct serial port.  
+To locate the serial port for use with the `docker-compose.yaml` file you can run the following command:  
+
+```bash
+ls -l /dev/serial/by-id/
+```
+
+**Build and Flash!**
+
+```bash
+docker compose build
+docker compose up
+```
 
 
 </details>
 
 
+<br><br>
 
-### **Roadmap**
+# **Hardware**
 
-- ✅ Async 
-- ✅ WIFI
-- ❌ Over The Air firmware updates
-- ✅ Sensors (Presence, Battery, Temperature, Humidity)
-- ✅ Display
-- ❌ Touch
-- ❌ Voice Assistant functionality (I2S)
-- ❌ Internal HTTP API (+ basic frontend?)
-- ✅ Backend
-
-<br>
 
 ### **📶 Specs**
 
@@ -172,8 +238,16 @@ Project is currently under active development.
 
 <br>
 
-### **License**
+## **Sponsor My Work**
+
+<a href="https://www.buymeacoffee.com/quackhackmcblindy" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 
 <br>
 
-**MIT**
+## **Lisence**
+
+**MIT**  
+
+Contributions are welcomed.
+
+<br>

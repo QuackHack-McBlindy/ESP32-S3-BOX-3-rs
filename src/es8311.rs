@@ -2,6 +2,9 @@
 #![allow(unused)]
 
 use embedded_hal::i2c::I2c;
+use embedded_hal::delay::DelayNs;
+use esp_hal::delay::Delay;
+
 
 
 // Register addresses
@@ -173,7 +176,7 @@ impl Es8311 {
 
         // Reset
         self.write_reg(i2c, RESET_REG00, 0x1F)?;
-        // Delay could be added here, but we skip for now.
+        Delay::new().delay_ns(20_000_000);
         self.write_reg(i2c, RESET_REG00, 0x00)?;
         self.write_reg(i2c, RESET_REG00, 0x80)?; // Power-on command
 

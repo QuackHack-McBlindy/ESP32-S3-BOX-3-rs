@@ -4,7 +4,7 @@ use esp_hal::gpio::Input;
 use defmt::info;
 
 #[task]
-pub async fn occupancy_task(occupancy: Input<'static>) {
+pub async fn occupancy_task(occupancy: Input<'static>) {   // <-- removed `mut`
     let mut last = occupancy.is_high();
     loop {
         let current = occupancy.is_high();

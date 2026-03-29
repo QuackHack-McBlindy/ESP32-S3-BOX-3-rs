@@ -1,0 +1,19 @@
+services:
+  box3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./:/app
+    image: esp-dev:esp32s3box3
+    container_name: esp32s3box3-dev
+    devices:
+      - "/dev/ttyACM0:/dev/ttyACM0"
+    environment:
+      - CARGO_UNSTABLE_BUILD_STD=core
+    env_file:
+      - ./.env
+    stdin_open: true
+    tty: true
+    command: bash -c "source /root/export-esp.sh && cargo run --release"
+
