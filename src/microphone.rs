@@ -13,6 +13,7 @@ use esp_hal::Async;
 use core::net::SocketAddr;
 use alloc::vec::Vec;
 use alloc::vec;
+use crate::speaker;
 
 macro_rules! display_brightness {
     ($channel:expr, $percent:expr) => {{
@@ -41,12 +42,13 @@ fn display_brightness(ch: &mut Channel<'static, LowSpeed>, percent: u8) {
     ch.set_duty(percent).unwrap();
 }
 
+
 #[task]
 pub async fn audio_capture_task(
     mut i2s_rx: I2sRx<'static, Async>,
-    stack: Stack<'static>,
+    stack: &'static Stack<'static>,
     remote_addr: SocketAddr,
-    backlight_channel: &'static mut Channel<'static, LowSpeed>, // <-- add this
+    backlight_channel: &'static mut Channel<'static, LowSpeed>,
 ) {
     let remote_endpoint = match remote_addr {
         SocketAddr::V4(v4) => (IpAddress::Ipv4(v4.ip().octets().into()), v4.port()),
@@ -196,14 +198,17 @@ pub async fn audio_capture_task(
                             0x01 => {
                                 info!("💥 DETECTED Wake Word!");
                                 display_brightness(backlight_channel, 70);
+                                speaker::play_ding().await;
                             }
                             0x03 => {
                                 info!("✅ Executed command!");
                                 display_brightness(backlight_channel, 0);
+                                speaker::play_done().await;
                             }
                             0x04 => {
                                 info!("💩 FAILED execution!");
                                 display_brightness(backlight_channel, 0);
+                                speaker::play_fail().await;
                             }
                             _ => info!("Unexpected byte from server: 0x{:02x}", byte),
                         }

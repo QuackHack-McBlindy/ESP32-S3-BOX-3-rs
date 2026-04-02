@@ -13,7 +13,6 @@ Project is in early stage development.
 ### **Features**
 
 - Sensors *(presence, temperature, humidity, battery status, etc)*
-- MQTT state reporting
 - Voice Assistant
 - [Backend](https://github.com/QuackHack-McBlindy/yo)
   - Wake Word Detection
@@ -67,22 +66,22 @@ $ cd ESP32-S3-BOX-3-rs
 Configure WiFi and other required seetings in the example `.env` file.  
 
 ```bash
-mv .env.example .env
-nano .env
+$ mv .env.example .env
+$ nano .env
 ```
 
 Edit `docker-compose.yaml` to use your correct serial port.  
 To locate the serial port for use with the `docker-compose.yaml` file you can run the following command:  
 
 ```bash
-ls -l /dev/serial/by-id/
+$ ls -l /dev/serial/by-id/
 ```
 
 **Build and Flash!**
 
 ```bash
-docker compose build
-docker compose up
+$ docker compose build
+$ docker compose up
 ```
 
 
@@ -238,16 +237,16 @@ docker compose up
 
 <br>
 
-## **Sponsor My Work**
-
-<a href="https://www.buymeacoffee.com/quackhackmcblindy" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
-
-<br>
 
 ## **Lisence**
 
 **MIT**  
-
+<br>
 Contributions are welcomed.
 
 <br>
+
+## **Sponsor My Work**
+
+<a href="https://www.buymeacoffee.com/quackhackmcblindy" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+
