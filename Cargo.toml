@@ -15,22 +15,30 @@ esp-rtos = { version = "0.2.0", features = [
   "esp32s3",
 ] }
 esp-alloc = { version = "0.9.0", features = ["defmt"] } # Mem
-
+esp-storage  = { version = "0.4.0", features = ["esp32s3"] } 
 # ESP-IDF bootloader
 esp-bootloader-esp-idf = { version = "0.4.0", features = ["defmt", "esp32s3"] }
 
 
-# LCD display
+# Display
 ili9341 = "0.6.0"
+display-interface-spi = "0.5.0"
+embedded-graphics = "0.8.0"
+
 # Bluetooth
 bt-hci = "0.6.0"
 
 embedded-io = { version = "0.7.1", features = ["defmt"] }
 embedded-io-async = { version = "0.7.0", features = ["defmt"] }
+embedded-hal = "1.0"
+embedded-hal-bus = "0.3.0"
+embedded-storage = "0.3.1"
 
 # Async
 embassy-executor = { version = "0.9.1", features = ["defmt"] }
 embassy-time = { version = "0.5.0", features = ["defmt"] }
+embassy-sync = { version = "0.8.0", features = ["defmt"] }
+embassy-futures = "0.1"
 
 # WIFI
 esp-radio = { version = "0.17.0", features = [
@@ -43,8 +51,9 @@ esp-radio = { version = "0.17.0", features = [
   "unstable",
   "wifi",
 ] }
-embassy-net = { version = "0.7.1", features = [
+embassy-net = { version = "0.9.0", features = [
   "defmt",
+  "dns",
   "dhcpv4",
   "medium-ethernet",
   "tcp",
@@ -65,19 +74,31 @@ smoltcp = { version = "0.12.0", default-features = false, features = [
 ] }
 trouble-host = { version = "0.5.0", features = ["gatt"] }
 
+# Seed
+rand_core = "0.6"
+
 # Misc/logging
 critical-section = "1.2.0"
 static_cell = "2.1.1"
 defmt = "1.0.1"
 esp-println = { version = "0.16.1", features = ["defmt-espflash", "esp32s3"] }
+heapless = "0.8"
 
 # HTTP API
+#tinyapi = { path = "./vendor/tinyapi", features = ["defmt", "log"] }
+tinyapi = { version = "0.1.1", features = ["defmt", "log"] }
+#aht20-rs = { version = "0.1.0", features = ["task", "defmt", "log"] }
 picoserve = "0.18.0"
+reqwless = { version = "0.5", default-features = false }
 
 # Math
 micromath = "2.1.0"
 libm = "0.2"
 
+[features]
+default = ["use_mic"]
+use_mic = []
+use_speaker = []
 
 [profile.dev]
 opt-level = "s"
@@ -90,4 +111,3 @@ incremental = false
 lto = 'fat'
 opt-level = 's'
 overflow-checks = false
-

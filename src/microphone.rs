@@ -1,4 +1,5 @@
 use defmt::{info, error};
+use defmt::Debug2Format;
 use embassy_executor::task;
 use embassy_net::{Stack, tcp::TcpSocket, IpAddress};
 use embassy_time::{Duration, Timer};
@@ -15,12 +16,6 @@ use alloc::vec::Vec;
 use alloc::vec;
 use crate::speaker;
 
-macro_rules! display_brightness {
-    ($channel:expr, $percent:expr) => {{
-        let percent = $percent.clamp(0, 100);
-        $channel.set_duty_percent(percent).unwrap();
-    }};
-}
 
 
 // AUDIO PARAMETERS
@@ -36,11 +31,11 @@ const TCP_TX_BUF_SIZE: usize = 4096;
 // room identifier (currently only 'esp' supported)
 const ROOM: &str = "esp";
 
-fn display_brightness(ch: &mut Channel<'static, LowSpeed>, percent: u8) {
-    use esp_hal::ledc::channel::ChannelIFace;
-    let percent = percent.clamp(0, 80);
-    ch.set_duty(percent).unwrap();
-}
+//fn //display_brightness(ch: &mut Channel<'static, LowSpeed>, percent: u8) {
+//    use esp_hal::ledc::channel::ChannelIFace;
+//    let percent = percent.clamp(0, 80);
+//    ch.set_duty(percent).unwrap();
+//}
 
 
 #[task]
@@ -48,7 +43,7 @@ pub async fn audio_capture_task(
     mut i2s_rx: I2sRx<'static, Async>,
     stack: &'static Stack<'static>,
     remote_addr: SocketAddr,
-    backlight_channel: &'static mut Channel<'static, LowSpeed>,
+//    backlight_channel: &'static mut Channel<'static, LowSpeed>,
 ) {
     let remote_endpoint = match remote_addr {
         SocketAddr::V4(v4) => (IpAddress::Ipv4(v4.ip().octets().into()), v4.port()),
@@ -131,6 +126,7 @@ pub async fn audio_capture_task(
 
         // STREAMING LOOP: send wake chunks
         'stream: loop {
+            let mut silent = false;
             if let Err(e) = i2s_rx.read_dma_async(&mut i2s_buffer).await {
                 error!("I2S read error: {:?}", e);
                 Timer::after(Duration::from_millis(10)).await;
@@ -164,6 +160,24 @@ pub async fn audio_capture_task(
                 }
 
                 let data = &chunk_buffer[..4 + chunk_len*4];
+
+                // microphone check - one two - mic check one two
+                let audio_data = &data[4..];
+                let all_zero = audio_data.iter().all(|&b| b == 0);
+                // one two zero ?
+                if all_zero { // all zero is not good
+                    if !silent {
+                        info!("🎙️⚠️ Microphone needs attention!");
+                        silent = true;
+                    } // finally non all zero
+                } else { 
+                    if silent { 
+                        info!("🎙️✅ Mic OK!");
+                        silent = false; 
+                    }
+                }
+
+                
                 let mut written = 0;
                 while written < data.len() {
                     match socket.write(&data[written..]).await {
@@ -197,17 +211,17 @@ pub async fn audio_capture_task(
                         match byte {
                             0x01 => {
                                 info!("💥 DETECTED Wake Word!");
-                                display_brightness(backlight_channel, 70);
+                                //display_brightness(backlight_channel, 70);
                                 speaker::play_ding().await;
                             }
                             0x03 => {
                                 info!("✅ Executed command!");
-                                display_brightness(backlight_channel, 0);
+                                //display_brightness(backlight_channel, 0);
                                 speaker::play_done().await;
                             }
                             0x04 => {
                                 info!("💩 FAILED execution!");
-                                display_brightness(backlight_channel, 0);
+                                //display_brightness(backlight_channel, 0);
                                 speaker::play_fail().await;
                             }
                             _ => info!("Unexpected byte from server: 0x{:02x}", byte),

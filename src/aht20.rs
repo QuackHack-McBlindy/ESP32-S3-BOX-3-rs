@@ -45,6 +45,7 @@ pub async fn sensor_task(i2c_mutex: &'static CsMutex<RefCell<I2c<'static, Blocki
             let temp_int = (temp * 10.0) as u16;
             let hum_int = (hum * 10.0) as u16;
             info!("🌡️ {=u16}.{=u16} °C, 💨 {=u16}.{=u16}%", temp_int / 10, temp_int % 10, hum_int / 10, hum_int % 10);
+            tinyapi::log!("🌡️ {}.{} °C, 💨 {}.{}%", temp_whole, temp_frac, hum_whole, hum_frac);
         } else { info!("AHT20 read failed"); }
         Timer::after(Duration::from_secs(60)).await;
     }

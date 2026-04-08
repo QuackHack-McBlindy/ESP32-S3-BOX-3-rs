@@ -52,3 +52,11 @@ macro_rules! gpio_output {
         Output::new($pin, $initial_level, OutputConfig::default())
     }};
 }
+
+macro_rules! display_brightness {
+    ($channel:expr, $percent:expr) => {{
+        let percent = $percent.clamp(0, 100);
+        $channel.set_duty_percent(percent).unwrap();
+    }};
+}
+
