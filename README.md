@@ -19,26 +19,28 @@ Designed to be used as a voice assistant and/or smart speaker.
 - [x] Async & WiFi
 - [x] Buttons & Display (lights up on wake word detection)
 - [x] Sensors (presence, temperature, humidity, battery status, ...)
-- [x] i2s: Microphone (RX) **FEATURE:** `use_mic` *(default)*
-- [x] i2s: Speaker (TX) **FEATURE:** `use_speaker`
+- [x] i2s: RX (Microphone) **FEATURE:** `use_mic` *(default)*
+- [x] i2s: TX (Speaker) **FEATURE:** `use_speaker`
 - [ ] ⚠️ i2s: Simultaneous RX & TX 
 - [x] Voice Command Execution (Wake word, speech to shell command)
 - [x] On-Device API
 - [x] On-Device WebServer (UI frontend)
-- [/] OTA (auto update from git repo)
+- [ ] OTA (auto update from git repo)
 - [ ] InfraRed (Send & Recieve)
 - [ ] Touch UI (settings, clock, media player, TV remote)
 - [ ] Security & WireGuard
-- [x] Backend ⬇️
+- [x] Backend: `yo`
 
-**yo** is not only the backend server service but it's also where you will write your voice commands.  
-This is where your `ESP32-S3-BOX-3` microphone audio will be streamed.  
+`yo` is not only the backend server service but it's also where you will write your voice commands.  
+This is where your `ESP32-S3-BOX-3` microphone audio will be stream  
 
-- [Backend: yo](https://github.com/QuackHack-McBlindy/yo)
+- [yo](https://github.com/QuackHack-McBlindy/yo)  
   - Wake Word Detection
   - Speech To Text
   - Text To Speech
   - Voice Command Execution
+
+
 
 <br>
 
@@ -118,7 +120,7 @@ $ docker compose up
 
 #### **Visit Your Device**  
 
-<img src="./resource/index.png""/>
+<img src="./resource/index.png" width="400px"/>
 
 **Web UI**  
 
