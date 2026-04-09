@@ -14,14 +14,24 @@ pub static SPEAKER_VOLUME: AtomicU8 = AtomicU8::new(58);
 pub static MIC_MUTED: AtomicBool = AtomicBool::new(false);
 pub static SPEAKER_MUTED: AtomicBool = AtomicBool::new(false);
 use crate::media::{PLAYER, PLAYLIST, PlaybackState};
+use alloc::vec;
 
 
+fn api_list_handler(_req: Request<'_>) -> Response {
+    let endpoints = vec![
+        "/",
+        "/api/settings/power/state/{value}",
+        "/api/settings/display/state/{value}",
+        // ...
+    ];
+    Response::text(&endpoints.join("\n"))
+}
 
 fn index_handler(_req: Request<'_>) -> Response {
     Response::html(include_str!("./../assets/index.html"))
 }
 
-fn brightness_handler(req: Request<'_>) -> Response {
+pub fn brightness_handler(req: Request<'_>) -> Response {
     let value = req.param("value").unwrap_or("?");
     info!("Setting brightness to {}", value);
     if let Ok(percent) = value.parse::<u8>() {
@@ -68,7 +78,6 @@ fn mic_volume_handler(req: Request<'_>) -> Response {
     if let Ok(vol) = value.parse::<u8>() {
         let vol = vol.clamp(0, 100);
         MIC_VOLUME.store(vol, Ordering::Relaxed);
-        //media::apply_mic_volume(); 
         info!("Mic volume set to {}%", vol);
     }
     Response::text(&format!("Mic volume {}", value))
@@ -193,9 +202,25 @@ fn favicon_handler(_req: Request<'_>) -> Response {
 
 
 fn js_handler(_req: Request<'_>) -> Response {
-    Response::script(include_str!("./../assets/script.js"))  // no semicolon
+    Response::script(include_str!("./../assets/script.js"))
 }
 
+fn voice_state_handler(req: Request<'_>) -> Response {
+    let value = req.param("value").unwrap_or("toggle");
+    match value {
+        "start" => {
+            info!("Voice recording started");
+        }
+        "stop" => {
+            info!("Voice recording stopped");
+        }
+        _ => {
+            info!("Invalid voice state: {}", value);
+            return Response::text("invalid state (use start/stop)");
+        }
+    }
+    Response::text("ok")
+}
 
 pub async fn init_routes() {
     // Serve the web frontend
@@ -212,6 +237,7 @@ pub async fn init_routes() {
     register_route("/api/settings/mic/mute/{value}", mic_mute_handler).await;
     register_route("/api/settings/speaker/volume/{value}", speaker_volume_handler).await;
     register_route("/api/settings/speaker/mute/{value}", speaker_mute_handler).await;
+    register_route("/api/settings/voice/state/{value}", voice_state_handler).await;
 
     // VOICE
     register_route("/api/voice/detected", detected_handler).await;
@@ -221,6 +247,7 @@ pub async fn init_routes() {
     register_route("/api/media/{action}", media_handler).await;
     // DATA ENDPOINTS
     // handles all sensor values currently on the ESP32-S3-BOX-3
+    register_route("/api", api_list_handler).await;
     register_route("/api/sensor/{value}", sensor_fetcher).await;
 
     tinyapi::log!("API routes registered");

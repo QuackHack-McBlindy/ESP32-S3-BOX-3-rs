@@ -248,7 +248,10 @@ async fn main(spawner: Spawner) -> ! {
         if let Err(e) = es7210.gain_set(&mut i2c, 20) {
             info!("ES7210 volume set failed: {:?}", Debug2Format(&e));
         }
-
+        if let Err(e) = es7210.set_mute(&mut i2c, false) {
+            info!("Failed to configure ES7210 mute status {:?}", Debug2Format(&e));
+        }
+        
         // ES8311 (DAC)
         let clock_cfg = es8311::ClockConfig {
             mclk_inverted: false,
@@ -453,7 +456,7 @@ async fn main(spawner: Spawner) -> ! {
     spawner.spawn(backlight_task(backlight_channel)).unwrap();
     // start API on port 80
     spawner.spawn(tinyapi::web_server_task(stack)).unwrap();
-    //spawner.spawn(tinyapi::http_client_task(stack, ip)).unwrap();
+
     // sensors
     spawner.spawn(aht20::sensor_task(i2c_b_mutex)).unwrap();
     // motion

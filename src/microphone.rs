@@ -9,6 +9,7 @@ use core::net::SocketAddr;
 use alloc::vec::Vec;
 use alloc::vec;
 use crate::speaker;
+use crate::media;
 use crate::mic::Microphone;
 
 const OWW_MODEL_CHUNK_SIZE: usize = 1280;
@@ -131,16 +132,13 @@ pub async fn audio_capture_task(
                 embassy_futures::select::Either::First(Ok(1)) => {
                     match byte_buf[0] {
                         0x01 => {
-                            info!("💥 DETECTED Wake Word!");
-                            speaker::play_ding().await;
+                            media::on_wake_word_detected();
                         }
                         0x03 => {
-                            info!("✅ Executed command!");
-                            speaker::play_done().await;
+                            media::on_command_executed();
                         }
                         0x04 => {
-                            info!("💩 FAILED execution!");
-                            speaker::play_fail().await;
+                            media::on_command_failed();
                         }
                         _ => info!("Unexpected byte: 0x{:02x}", byte_buf[0]),
                     }

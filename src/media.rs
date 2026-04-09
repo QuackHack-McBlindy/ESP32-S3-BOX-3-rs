@@ -3,8 +3,94 @@ use critical_section::Mutex;
 use defmt::{info, warn, error};
 use crate::api::*;
 use core::sync::atomic::Ordering;
-use crate::{I2C_BUS, ES7210};
+use crate::{I2C_BUS, ES7210, ES8311};
+use defmt::Format;
+use crate::BACKLIGHT_PERCENT;
 
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum VoiceAssistantPhase {
+    Listening,
+    Detected,
+    Executed,
+    Failed,
+}
+
+struct VoiceAssistantInner {
+    pub phase: VoiceAssistantPhase,
+}
+
+pub static VA_PHASE: Mutex<RefCell<VoiceAssistantInner>> = Mutex::new(RefCell::new(VoiceAssistantInner {
+    phase: VoiceAssistantPhase::Listening,
+}));
+
+pub fn get_va_phase() -> VoiceAssistantPhase {
+    critical_section::with(|cs| {
+        VA_PHASE.borrow_ref(cs).phase
+    })
+}
+
+pub fn set_va_phase(phase: VoiceAssistantPhase) {
+    critical_section::with(|cs| {
+        let mut inner = VA_PHASE.borrow_ref_mut(cs);
+        inner.phase = phase;
+    });
+}
+
+pub fn transition_va_phase(new_phase: VoiceAssistantPhase) {
+    set_va_phase(new_phase);
+
+    match new_phase {
+        VoiceAssistantPhase::Executed | VoiceAssistantPhase::Failed => {
+            set_va_phase(VoiceAssistantPhase::Listening);
+        }
+        _ => {}
+    }
+}
+
+
+pub fn on_wake_word_detected() {
+    let current = get_va_phase();
+    if current == VoiceAssistantPhase::Listening {
+        set_va_phase(VoiceAssistantPhase::Detected);
+        crate::speaker::play_ding();
+        info!("💥 DETECTED Wake Word!");
+        BACKLIGHT_PERCENT.store(70, Ordering::Relaxed);
+    } else {
+        info!("Wake word ignored");
+    }
+}
+
+
+pub fn on_command_executed() {
+    let current = get_va_phase();
+    if current == VoiceAssistantPhase::Detected {
+        transition_va_phase(VoiceAssistantPhase::Executed);
+        crate::speaker::play_done();
+        info!("✅ Executed command!");
+        BACKLIGHT_PERCENT.store(0, Ordering::Relaxed);
+    } else {
+        set_va_phase(VoiceAssistantPhase::Listening);
+    }
+}
+
+
+pub fn on_command_failed() {
+    let current = get_va_phase();
+    if current == VoiceAssistantPhase::Detected {
+        transition_va_phase(VoiceAssistantPhase::Failed);
+        crate::speaker::play_fail();
+        info!("💩 FAILED execution!");
+        BACKLIGHT_PERCENT.store(0, Ordering::Relaxed);
+    } else {
+        set_va_phase(VoiceAssistantPhase::Listening);
+    }
+}
+
+
+pub fn reset_va_phase() {
+    set_va_phase(VoiceAssistantPhase::Listening);
+}
 
 
 #[derive(Clone, Copy, PartialEq)]
@@ -90,7 +176,7 @@ pub fn handle_action(action: &str) -> &'static str {
             "Volume down"
         }
         _ => {
-            warn!("Unknown media action: {}", action);
+            info!("Unknown media action: {}", action);
             "Unknown action"
         }
     }
@@ -98,12 +184,7 @@ pub fn handle_action(action: &str) -> &'static str {
 
 
 pub fn get_status_text() -> &'static str {
-    critical_section::with(|cs| {
-        let player = PLAYER.borrow_ref(cs);
-        let current_track = &PLAYLIST[player.current_track_index];
-        let vol = SPEAKER_VOLUME.load(core::sync::atomic::Ordering::Relaxed);
-        let muted = SPEAKER_MUTED.load(core::sync::atomic::Ordering::Relaxed);
-    })
+    "status placeholder"
 }
 
 

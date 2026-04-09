@@ -18,6 +18,7 @@ const TIME_CONTROL1_REG0A: u8 = 0x0A;
 const SDP_INTERFACE1_REG11: u8 = 0x11;
 const SDP_INTERFACE2_REG12: u8 = 0x12;
 const ADC_AUTOMUTE_REG13: u8 = 0x13;
+const ADC12_MUTERANGE_REG15: u8 = 0x15;
 const ADC34_MUTERANGE_REG14: u8 = 0x14;
 const ALC_SEL_REG16: u8 = 0x16;
 const ADC1_DIRECT_DB_REG1B: u8 = 0x1B;
@@ -186,6 +187,17 @@ impl Es7210 {
         self.write_reg(i2c, RESET_REG00, 0x71)?;
         self.write_reg(i2c, RESET_REG00, 0x41)?;
 
+        Ok(())
+    }
+
+    /// Mute or unmute all ADC channels.
+    pub fn set_mute<I2C, E>(&self, i2c: &mut I2C, mute: bool) -> Result<(), Error<E>>
+    where
+        I2C: I2c<Error = E>,
+    {
+        let val = if mute { 0x03 } else { 0x00 };
+        self.write_reg(i2c, ADC34_MUTERANGE_REG14, val)?;
+        self.write_reg(i2c, ADC12_MUTERANGE_REG15, val)?;
         Ok(())
     }
 

@@ -144,11 +144,15 @@ Using the internal API you can for example set the `ESP32-S3-BOX-3` display brig
 ```bash
 curl http://<esp-ip>:80/api/settings/display/brightness/75 
 ```
+  
 
-   
 | Endpoint | Description |
 |----------|-------------|
 | `/` | Serves the web frontend (HTML dashboard) |
+| `/favicon.ico` | Serves the favicon (currently returns 404) |
+| `/script.js` | Serves the JavaScript frontend logic |
+| `/api` | Returns a plain‑text list of all available API endpoints |
+| `/api/update` | Trigger OTA firmware update |
 | `/api/settings/power/state/{value}` | Control device power: `on`, `off`, or `toggle` (default) |
 | `/api/settings/display/state/{value}` | Control display on/off: `on`, `off`, or `toggle` |
 | `/api/settings/display/brightness/{value}` | Set backlight brightness (0–80%). `{value}` as integer percent |
@@ -156,8 +160,10 @@ curl http://<esp-ip>:80/api/settings/display/brightness/75
 | `/api/settings/mic/mute/{value}` | Mute/unmute mic: `1`/`on`/`mute`, `0`/`off`/`unmute`, or `toggle` |
 | `/api/settings/speaker/volume/{value}` | Set speaker volume (0–100%) |
 | `/api/settings/speaker/mute/{value}` | Mute/unmute speaker: same options as mic mute |
-| `/api/settings/voice/state/{value}` | Voice recording command (e.g., `start`/`stop`) |
-| `/api/settings/update` | Trigger OTA firmware update |
+| `/api/settings/voice/state/{value}` | Voice recording command: `start` or `stop` |
+| `/api/voice/detected` | Called when voice is detected; sets brightness to 70% and returns `"OK"` |
+| `/api/voice/executed` | Called after a voice command succeeds; sets brightness to 0% and returns `"OK"` |
+| `/api/voice/failed` | Called after a voice command fails; sets brightness to 0% and returns `"OK"` |
 | `/api/media/{action}` | Media control (e.g., `play`, `pause`, `next`, `prev`) |
 | `/api/sensor/{value}` | Read a sensor or system value (see supported keys below) |
 
@@ -177,7 +183,6 @@ curl http://<esp-ip>:80/api/settings/display/brightness/75
 
 
 <br><br>
-
 
 
 

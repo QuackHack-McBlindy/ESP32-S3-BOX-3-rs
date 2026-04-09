@@ -96,7 +96,7 @@ micromath = "2.1.0"
 libm = "0.2"
 
 [features]
-default = ["use_speaker"]
+default = ["use_mic"]
 use_mic = []
 use_speaker = []
 
