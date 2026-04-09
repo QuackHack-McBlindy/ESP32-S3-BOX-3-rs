@@ -6,8 +6,10 @@ services:
     volumes:
       - ./:/app
     image: esp-dev:esp32s3box3
+    # use: `docker exec -it esp32s3box3-dev bin/bash`
+    # to jump into container for development
     container_name: esp32s3box3-dev
-    devices:
+    devices: # enter your serial port
       - "/dev/ttyACM0:/dev/ttyACM0"
     environment:
       - CARGO_UNSTABLE_BUILD_STD=core
@@ -15,5 +17,5 @@ services:
       - ./.env
     stdin_open: true
     tty: true
-    command: bash -c "source /root/export-esp.sh && cargo run --release"
+    #command: bash -c "source /root/export-esp.sh && cargo clean && cargo run --release"
 

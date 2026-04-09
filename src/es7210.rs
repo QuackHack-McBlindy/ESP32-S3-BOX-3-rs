@@ -189,6 +189,27 @@ impl Es7210 {
         Ok(())
     }
 
+    /// Enable the codec (power up, start ADCs)
+    pub fn enable<I2C, E>(&self, i2c: &mut I2C) -> Result<(), Error<E>>
+    where
+        I2C: I2c<Error = E>,
+    {
+        self.write_reg(i2c, RESET_REG00, 0x71)?;
+        self.write_reg(i2c, RESET_REG00, 0x41)?;
+        Ok(())
+    }
+
+    /// Disable the codec (power down, stop ADCs)
+    pub fn disable<I2C, E>(&self, i2c: &mut I2C) -> Result<(), Error<E>>
+    where
+        I2C: I2c<Error = E>,
+    {
+        // Put the codec into reset / power‑down state
+        self.write_reg(i2c, RESET_REG00, 0x00)?;
+        Ok(())
+    }
+
+
     pub fn gain_set<I2C, E>(
         &self,
         i2c: &mut I2C,

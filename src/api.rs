@@ -3,13 +3,17 @@ use defmt::info;
 use alloc::format;
 use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use crate::BACKLIGHT_PERCENT;
-
-static POWER_STATE: AtomicBool = AtomicBool::new(true);
-static DISPLAY_STATE: AtomicBool = AtomicBool::new(true);
-static MIC_VOLUME: AtomicU8 = AtomicU8::new(72);
-static SPEAKER_VOLUME: AtomicU8 = AtomicU8::new(58);
-static MIC_MUTED: AtomicBool = AtomicBool::new(false);
-static SPEAKER_MUTED: AtomicBool = AtomicBool::new(false);
+use crate::media;
+use crate::aht20::HUMIDITY;
+use crate::aht20::TEMPERATURE;
+use crate::presence::PRESENCE;
+pub static POWER_STATE: AtomicBool = AtomicBool::new(true);
+pub static DISPLAY_STATE: AtomicBool = AtomicBool::new(true);
+pub static MIC_VOLUME: AtomicU8 = AtomicU8::new(72);
+pub static SPEAKER_VOLUME: AtomicU8 = AtomicU8::new(58);
+pub static MIC_MUTED: AtomicBool = AtomicBool::new(false);
+pub static SPEAKER_MUTED: AtomicBool = AtomicBool::new(false);
+use crate::media::{PLAYER, PLAYLIST, PlaybackState};
 
 
 
@@ -64,6 +68,7 @@ fn mic_volume_handler(req: Request<'_>) -> Response {
     if let Ok(vol) = value.parse::<u8>() {
         let vol = vol.clamp(0, 100);
         MIC_VOLUME.store(vol, Ordering::Relaxed);
+        //media::apply_mic_volume(); 
         info!("Mic volume set to {}%", vol);
     }
     Response::text(&format!("Mic volume {}", value))
@@ -119,13 +124,37 @@ fn speaker_mute_handler(req: Request<'_>) -> Response {
     Response::text(if muted { "muted" } else { "unmuted" })
 }
 
-fn record_handler(req: Request<'_>) -> Response {
-    let value = req.param("value").unwrap_or("start");
-    info!("Voice command: {}", value);
-    Response::text(&format!("Recording {}", value))
+fn detected_handler(req: Request<'_>) -> Response {
+    let value = "70";
+    info!("Setting brightness to {}", value);
+    if let Ok(percent) = value.parse::<u8>() {
+        let percent = percent.clamp(0, 80);
+        BACKLIGHT_PERCENT.store(percent, Ordering::Relaxed);
+    }
+    Response::text("OK")
 }
 
-fn update_handler(_req: Request<'_>) -> Response {
+fn voice_win_handler(req: Request<'_>) -> Response {
+    let value = "0";
+    info!("Setting brightness to {}", value);
+    if let Ok(percent) = value.parse::<u8>() {
+        let percent = percent.clamp(0, 80);
+        BACKLIGHT_PERCENT.store(percent, Ordering::Relaxed);
+    }
+    Response::text("OK")    
+}
+
+fn voice_fail_handler(req: Request<'_>) -> Response {
+    let value = "0";
+    info!("Setting brightness to {}", value);
+    if let Ok(percent) = value.parse::<u8>() {
+        let percent = percent.clamp(0, 80);
+        BACKLIGHT_PERCENT.store(percent, Ordering::Relaxed);
+    }
+    Response::text("OK")
+}
+
+fn ota_handler(_req: Request<'_>) -> Response {
     info!("OTA update requested");
     Response::text("update started")
 }
@@ -133,7 +162,8 @@ fn update_handler(_req: Request<'_>) -> Response {
 fn media_handler(req: Request<'_>) -> Response {
     let action = req.param("action").unwrap_or("none");
     info!("Media action: {}", action);
-    Response::text(&format!("Media {}", action))
+    let status = crate::media::handle_action(action);
+    Response::text(status)
 }
 
 fn sensor_fetcher(req: Request<'_>) -> Response {
@@ -156,8 +186,14 @@ fn sensor_fetcher(req: Request<'_>) -> Response {
 }
 
 fn favicon_handler(_req: Request<'_>) -> Response {
-    //Response::html(include_bytes!("./../assets/favicon.ico"));
+    //Response::file(include_bytes!("./../assets/favicon.ico"));
     Response::not_found()    
+}
+
+
+
+fn js_handler(_req: Request<'_>) -> Response {
+    Response::script(include_str!("./../assets/script.js"))  // no semicolon
 }
 
 
@@ -165,6 +201,9 @@ pub async fn init_routes() {
     // Serve the web frontend
     register_route("/", index_handler).await;
     register_route("/favicon.ico", favicon_handler).await;
+    register_route("/script.js", js_handler).await;
+    // OTA
+    register_route("/api/update", ota_handler).await;        
     // CONTROLLER ENDPOINTS
     register_route("/api/settings/power/state/{value}", power_state_handler).await;
     register_route("/api/settings/display/state/{value}", display_state_handler).await;
@@ -173,8 +212,12 @@ pub async fn init_routes() {
     register_route("/api/settings/mic/mute/{value}", mic_mute_handler).await;
     register_route("/api/settings/speaker/volume/{value}", speaker_volume_handler).await;
     register_route("/api/settings/speaker/mute/{value}", speaker_mute_handler).await;
-    register_route("/api/settings/voice/state/{value}", record_handler).await;
-    register_route("/api/settings/update", update_handler).await;
+
+    // VOICE
+    register_route("/api/voice/detected", detected_handler).await;
+    register_route("/api/voice/executed", voice_win_handler).await;
+    register_route("/api/voice/failed", voice_fail_handler).await;        
+
     register_route("/api/media/{action}", media_handler).await;
     // DATA ENDPOINTS
     // handles all sensor values currently on the ESP32-S3-BOX-3

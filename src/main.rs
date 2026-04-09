@@ -1,12 +1,15 @@
 #![no_std]
 #![no_main]
+#![allow(warnings)]
+#![allow(non_snake_case)]
 #![deny(clippy::mem_forget)]
 #![deny(clippy::large_stack_frames)]
 
 
+
 use esp_println as _;
 use defmt::{info, Debug2Format, error};
-use core::sync::atomic::Ordering;
+use core::sync::atomic::{AtomicU8, AtomicI8, AtomicU32, AtomicI32, Ordering};
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
 use embassy_sync::blocking_mutex::CriticalSectionMutex;
@@ -22,15 +25,16 @@ use esp_hal::{
     clock::CpuClock,
     delay::Delay,
     gpio::{Level, NoPin, Output, OutputConfig, OutputSignal, Input, InputConfig, Pull, Pin, Flex},
-    peripherals::ADC1,
+    peripherals::{ADC1, GPIO17, GPIO45},    
     i2c::master::{Config as I2cConfig, I2c},
-    i2s::master::{I2s, I2sRx, I2sTx, Config as I2sConfig, DataFormat, Channels},
+    i2s::master::{I2s, I2sRx, I2sTx, Config as I2sConfig, DataFormat, Channels, I2sInterrupt},
     i2s::master::asynch::I2sWriteDmaTransferAsync,
     i2s::master::asynch::I2sReadDmaTransferAsync,
     spi::master::{Config as SpiConfig, Spi},
     ledc::channel::ChannelIFace,
     ledc::timer::TimerIFace,
     ledc::{LSGlobalClkSource, Ledc, LowSpeed},
+    ledc::channel::Channel,
     time::{Instant, Rate},
     timer::timg::TimerGroup,
     rng::Rng,
@@ -45,8 +49,9 @@ use embedded_hal_bus::spi::ExclusiveDevice;
 use embedded_hal::i2c::I2c as HalI2c;
 
 // WiFi / METWORK
-use embassy_net::{Config as NetConfig, DhcpConfig, Stack, StackResources, Runner, dns::DnsQueryType, tcp::TcpSocket};
 use esp_radio::wifi::{ClientConfig, ModeConfig, Config as WifiConfig};
+use embassy_net::{Config as NetConfig, DhcpConfig, Stack, StackResources, Runner, dns::DnsQueryType, tcp::TcpSocket, IpAddress};
+use tinyapi::*;
 
 // display
 use display_interface_spi::SPIInterface;
@@ -65,20 +70,25 @@ use embedded_graphics::{
 
 
 // LOAD MODULES
+mod macros; // best first
+use macros::*;
 mod es7210; // audio codec for mic
 mod es8311; // audio codec for speaker
 mod aht20; // temperature & humidity sensor
+mod mic;
 mod microphone;
 mod speaker;
 use speaker::*;
+mod media;
+use media::*;
 mod buttons;
 use buttons::top_left_button_task;
 mod presence;
 mod wifi;
 use wifi::{CURRENT_RSSI, connection, net_task};
-mod macros; // helpers
-use macros::*;
-
+// API (must be last)
+mod api;
+use api::*;
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -88,6 +98,7 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
 // PSRAM?
 extern crate alloc;
 use alloc::boxed::Box;
+use alloc::format;
 
 // bootloader
 esp_bootloader_esp_idf::esp_app_desc!();
@@ -97,13 +108,36 @@ const SSID: &str = env!("WIFI_SSID");
 const PASSWORD: &str = env!("WIFI_PASSWORD");
 const BACKEND_TCP_HOST: &str = env!("BACKEND_TCP_HOST");
 
-use esp_hal::peripherals::GPIO17;
-use esp_hal::peripherals::GPIO45;
+//use esp_hal::peripherals::GPIO17;
+//use esp_hal::peripherals::GPIO45;
 
 
 const SAMPLE_RATE: u32 = 16000;
 const BUFFER_SIZE: usize = 4096;
 const SAMPLE_COUNT: usize = 256;
+
+
+use esp_hal::peripherals::I2C0;
+pub static BACKLIGHT_PERCENT: AtomicU8 = AtomicU8::new(0);
+
+pub type I2cBus = I2c<'static, Blocking>;
+
+pub static I2C_BUS: CsMutex<RefCell<Option<I2cBus>>> = CsMutex::new(RefCell::new(None));
+pub static ES7210: CsMutex<RefCell<Option<es7210::Es7210>>> = CsMutex::new(RefCell::new(None));
+pub static ES8311: CsMutex<RefCell<Option<es8311::Es8311>>> = CsMutex::new(RefCell::new(None));
+
+pub static BATTERY_VOLTAGE: AtomicU32 = AtomicU32::new(0);
+pub static BATTERY_PERCENT: AtomicU8 = AtomicU8::new(100);
+pub static RSSI: AtomicI32 = AtomicI32::new(0);
+
+#[embassy_executor::task]
+async fn backlight_task(mut channel: &'static mut Channel<'static, LowSpeed>) {
+    loop {
+        let percent = BACKLIGHT_PERCENT.load(Ordering::Relaxed);
+        channel.set_duty(percent).unwrap();
+        Timer::after(Duration::from_millis(100)).await;
+    }
+}
 
 
  
@@ -137,10 +171,9 @@ async fn main(spawner: Spawner) -> ! {
 
     let i2s_bclk = peripherals.GPIO17;
     let i2s_lrclk = peripherals.GPIO45;
-    let i2s_bclk_rx = unsafe { GPIO17::steal() };
-    let i2s_lrclk_rx = unsafe { GPIO45::steal() };
-    
-        
+    //let i2s_bclk_rx = unsafe { GPIO17::steal() };
+    //let i2s_lrclk_rx = unsafe { GPIO45::steal() };
+          
     let i2s_mclk = peripherals.GPIO2;
     let i2s_din = peripherals.GPIO16;
     let i2s_dout = peripherals.GPIO15;
@@ -270,8 +303,7 @@ async fn main(spawner: Spawner) -> ! {
         .unwrap();
     
     // leak the channel to get static mut
-    let backlight_channel: &'static mut _ = Box::leak(Box::new(channel0));
-    
+    let backlight_channel: &'static mut _ = Box::leak(Box::new(channel0)); 
     
     // DISPLAY
     let spi_bus = Spi::new(
@@ -330,7 +362,7 @@ async fn main(spawner: Spawner) -> ! {
     let rng = Rng::new();
     let seed = (u64::from(rng.random())) << 32 | u64::from(rng.random());
     
-    let stack_resources = mk_static!(StackResources<3>, StackResources::<3>::new());
+    let stack_resources = mk_static!(StackResources<16>, StackResources::<16>::new());
     
     let (stack, runner) = embassy_net::new(
         interfaces.sta,
@@ -354,17 +386,6 @@ async fn main(spawner: Spawner) -> ! {
     };
     info!("IP: {}", ip);
     
-    let BACKEND_TCP_PORT: u16 = env!("BACKEND_TCP_PORT").parse().expect("Invalid port");
-    // resolve backend address
-    let remote_addr = loop {
-        match stack.dns_query(BACKEND_TCP_HOST, DnsQueryType::A).await {
-            Ok(addr) => break (addr[0], BACKEND_TCP_PORT).into(),
-            Err(e) => {
-                info!("DNS lookup error for {}: {}", BACKEND_TCP_HOST, e);
-                Timer::after(Duration::from_secs(5)).await;
-            }
-        }
-    };
 
 
     // I2S Audio setup 
@@ -385,45 +406,61 @@ async fn main(spawner: Spawner) -> ! {
     .with_mclk(i2s_mclk)
     .into_async();
 
-
-    let mut i2s_tx = i2s.i2s_tx
-        .with_bclk(i2s_bclk)
-        .with_ws(i2s_lrclk)
-        .with_dout(i2s_dout)
-        .build(tx_descriptors);
-
     Timer::after(Duration::from_millis(10)).await;
 
+    #[cfg(feature = "use_mic")]
+    {
+        let BACKEND_TCP_PORT: u16 = env!("BACKEND_TCP_PORT").parse().expect("Invalid port");
+        // resolve backend address
+        let remote_addr = loop {
+            match stack.dns_query(BACKEND_TCP_HOST, DnsQueryType::A).await {
+                Ok(addr) => break (addr[0], BACKEND_TCP_PORT).into(),
+                Err(e) => {
+                    info!("DNS lookup error for {}: {}", BACKEND_TCP_HOST, e);
+                    Timer::after(Duration::from_secs(5)).await;
+                }
+            }
+        };
+     
+        let i2s_rx = i2s.i2s_rx
+            .with_bclk(i2s_bclk)
+            .with_ws(i2s_lrclk)
+            .with_din(i2s_din)
+            .build(rx_descriptors);
+        spawner.spawn(microphone::audio_capture_task(i2s_rx, stack, remote_addr)).unwrap();
+    }
 
-    let mut i2s_rx = i2s.i2s_rx
-        .with_bclk(i2s_bclk_rx)
-        .with_ws(i2s_lrclk_rx)
-        .with_din(i2s_din)
-        .build(rx_descriptors);
-
-
+    #[cfg(feature = "use_speaker")]
+    {
+        let i2s_tx = i2s.i2s_tx
+            .with_bclk(i2s_bclk)
+            .with_ws(i2s_lrclk)
+            .with_dout(i2s_dout)
+            .build(tx_descriptors);
+        let i2s_tx: &'static mut _ = Box::leak(Box::new(i2s_tx));
+        spawner.spawn(speaker_task(i2s_tx)).unwrap();
+        spawner.spawn(top_left_button_task(button_top_left)).unwrap();
+    }
 
     Timer::after(Duration::from_millis(1000)).await;
 
-    let i2s_tx: &'static mut I2sTx<'static, Async> = Box::leak(Box::new(i2s_tx));
-
+    // init API routes
+    api::init_routes().await;
 
     // TASKS
     let _ = spawner;
 
-
-    // speaker
-    spawner.spawn(speaker_task(i2s_tx)).unwrap();
+    spawner.spawn(backlight_task(backlight_channel)).unwrap();
+    // start API on port 80
+    spawner.spawn(tinyapi::web_server_task(stack)).unwrap();
+    //spawner.spawn(tinyapi::http_client_task(stack, ip)).unwrap();
     // sensors
     spawner.spawn(aht20::sensor_task(i2c_b_mutex)).unwrap();
     // motion
     spawner.spawn(presence::occupancy_task(occupancy)).unwrap();
-    // buttons
-    spawner.spawn(top_left_button_task(button_top_left)).unwrap();
-    // microphones
-    spawner.spawn(microphone::audio_capture_task(i2s_rx, stack, remote_addr, backlight_channel)).unwrap();
+    Timer::after(Duration::from_millis(1500)).await;
 
-  
+
     loop { // calculate battery %
         let raw = adc.read_blocking(&mut adc_pin);
         let pin_voltage = raw as f32 * 1100.0 / 4095.0 / 1000.0;
@@ -431,17 +468,22 @@ async fn main(spawner: Spawner) -> ! {
         let percentage = ((battery_voltage - 3.0) / (4.2 - 3.0) * 100.0)
             .clamp(0.0, 100.0) as u8;
 
+        // store as millivolts (u32) no go float
+        let voltage_mv = (battery_voltage * 1000.0) as u32;
+        BATTERY_VOLTAGE.store(voltage_mv, Ordering::Relaxed);
+        BATTERY_PERCENT.store(percentage, Ordering::Relaxed);
+
+        let rssi = wifi::CURRENT_RSSI.load(Ordering::Relaxed);
+        RSSI.store(rssi, Ordering::Relaxed);
         let emoji = match percentage {
             0..=10 => "🪫⚡",
             11..=29 => "🪫",
             30..=70 => "🔋",
             _ => "🔋",
         };
-        info!("{} {}%,  ({=f32} V)", emoji, percentage, battery_voltage);
-        
-        // show RSSI 
-        let rssi = wifi::CURRENT_RSSI.load(Ordering::Relaxed);
+        info!("{} {}%,  ({} mV)", emoji, percentage, voltage_mv);
         info!("🛜 {} dBm", rssi);
-        Timer::after(Duration::from_secs(60)).await; // every minute
+    
+        Timer::after(Duration::from_secs(60)).await;
     }
-}
+}    
