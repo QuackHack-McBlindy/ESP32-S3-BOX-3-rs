@@ -353,6 +353,6 @@ curl http://<esp-ip>:80/api/settings/display/brightness/75
 
 <br>
 
-## **Lisence**
+## **License**
 
 **MIT**  

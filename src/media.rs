@@ -6,7 +6,7 @@ use core::sync::atomic::Ordering;
 use crate::{I2C_BUS, ES7210, ES8311};
 use defmt::Format;
 use crate::BACKLIGHT_PERCENT;
-
+use crate::SPEAKER_VOLUME;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum VoiceAssistantPhase {
@@ -281,3 +281,6 @@ fn volume_down() {
     SPEAKER_VOLUME.store(new, core::sync::atomic::Ordering::Relaxed);
     info!("Media volume decreased to {}%", new);
 }
+
+
+

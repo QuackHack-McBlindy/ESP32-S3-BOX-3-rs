@@ -7,15 +7,21 @@ use crate::media;
 use crate::aht20::HUMIDITY;
 use crate::aht20::TEMPERATURE;
 use crate::presence::PRESENCE;
+
+use crate::MIC_VOLUME;
+use crate::SPEAKER_VOLUME;
+use crate::MIC_MUTED;
+use crate:: SPEAKER_MUTED;
+
 pub static POWER_STATE: AtomicBool = AtomicBool::new(true);
 pub static DISPLAY_STATE: AtomicBool = AtomicBool::new(true);
-pub static MIC_VOLUME: AtomicU8 = AtomicU8::new(72);
-pub static SPEAKER_VOLUME: AtomicU8 = AtomicU8::new(58);
-pub static MIC_MUTED: AtomicBool = AtomicBool::new(false);
-pub static SPEAKER_MUTED: AtomicBool = AtomicBool::new(false);
+
+
+
 use crate::media::{PLAYER, PLAYLIST, PlaybackState};
 use alloc::vec;
 
+use esp_hal::time::Instant;
 
 fn api_list_handler(_req: Request<'_>) -> Response {
     let endpoints = vec![
@@ -199,6 +205,8 @@ fn favicon_handler(_req: Request<'_>) -> Response {
     Response::not_found()    
 }
 
+pub static MIC_ACTIVE: AtomicBool = AtomicBool::new(true);
+pub static pause_flag: AtomicBool = AtomicBool::new(true);
 
 
 fn js_handler(_req: Request<'_>) -> Response {
@@ -210,9 +218,11 @@ fn voice_state_handler(req: Request<'_>) -> Response {
     match value {
         "start" => {
             info!("Voice recording started");
+            MIC_ACTIVE.store(true, Ordering::Release);
         }
         "stop" => {
             info!("Voice recording stopped");
+            MIC_ACTIVE.store(false, Ordering::Release);
         }
         _ => {
             info!("Invalid voice state: {}", value);

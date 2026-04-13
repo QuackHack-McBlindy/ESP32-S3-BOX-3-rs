@@ -6,10 +6,11 @@
 #![deny(clippy::large_stack_frames)]
 
 
-
+use alloc::vec;
 use esp_println as _;
 use defmt::{info, Debug2Format, error};
-use core::sync::atomic::{AtomicU8, AtomicI8, AtomicU32, AtomicI32, Ordering};
+use core::sync::atomic::{AtomicU8, AtomicI8, AtomicU32, AtomicI32, AtomicBool, Ordering};
+use core::net::SocketAddr;
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
 use embassy_sync::blocking_mutex::CriticalSectionMutex;
@@ -101,7 +102,9 @@ use alloc::boxed::Box;
 use alloc::format;
 
 // bootloader
-esp_bootloader_esp_idf::esp_app_desc!();
+esp_bootloader_esp_idf::esp_app_desc!(
+  
+);
 
 // COMPILE-TIME ENVIORMENT VARIABLES
 const SSID: &str = env!("WIFI_SSID");
@@ -121,8 +124,8 @@ use esp_hal::peripherals::I2C0;
 pub static BACKLIGHT_PERCENT: AtomicU8 = AtomicU8::new(0);
 
 pub type I2cBus = I2c<'static, Blocking>;
-
 pub static I2C_BUS: CsMutex<RefCell<Option<I2cBus>>> = CsMutex::new(RefCell::new(None));
+
 pub static ES7210: CsMutex<RefCell<Option<es7210::Es7210>>> = CsMutex::new(RefCell::new(None));
 pub static ES8311: CsMutex<RefCell<Option<es8311::Es8311>>> = CsMutex::new(RefCell::new(None));
 
@@ -140,7 +143,90 @@ async fn backlight_task(mut channel: &'static mut Channel<'static, LowSpeed>) {
 }
 
 
- 
+pub static MIC_VOLUME: AtomicU8 = AtomicU8::new(72);
+pub static SPEAKER_VOLUME: AtomicU8 = AtomicU8::new(58);
+pub static MIC_MUTED: AtomicBool = AtomicBool::new(false);
+pub static SPEAKER_MUTED: AtomicBool = AtomicBool::new(false);
+
+fn mic_volume_percent_to_db(percent: u8) -> i8 {
+    let clamped = percent.clamp(0, 100) as i32;
+    let db = -95 + (clamped * 127) / 100;
+    db as i8
+}
+
+fn speaker_volume_percent(percent: u8) -> u8 {
+    percent.clamp(0, 100)
+}
+
+#[embassy_executor::task]
+pub async fn audio_settings_task(i2c_bus: &'static CsMutex<RefCell<I2cBus>>) {
+    let mut last_mic_vol = MIC_VOLUME.load(Ordering::Relaxed);
+    let mut last_spk_vol = SPEAKER_VOLUME.load(Ordering::Relaxed);
+    let mut last_mic_muted = MIC_MUTED.load(Ordering::Relaxed);
+    let mut last_spk_muted = SPEAKER_MUTED.load(Ordering::Relaxed);
+
+    loop {
+        let mic_vol = MIC_VOLUME.load(Ordering::Relaxed);
+        let spk_vol = SPEAKER_VOLUME.load(Ordering::Relaxed);
+        let mic_muted = MIC_MUTED.load(Ordering::Relaxed);
+        let spk_muted = SPEAKER_MUTED.load(Ordering::Relaxed);
+
+        let mic_changed = mic_vol != last_mic_vol || mic_muted != last_mic_muted;
+        let spk_changed = spk_vol != last_spk_vol || spk_muted != last_spk_muted;
+
+        if mic_changed || spk_changed {
+            critical_section::with(|cs| {
+                let mut i2c_dev = CriticalSectionDevice::new(i2c_bus);
+
+                if mic_changed {
+                    let mut es7210_borrow = ES7210.borrow_ref_mut(cs);
+                    if let Some(es7210) = es7210_borrow.as_mut() {
+                        if mic_muted != last_mic_muted {
+                            if let Err(e) = es7210.set_mute(&mut i2c_dev, mic_muted) {
+                                info!("ES7210 mute failed: {:?}", Debug2Format(&e));
+                            }
+                        }
+
+                        if mic_vol != last_mic_vol {
+                            let db = mic_volume_percent_to_db(mic_vol);
+                            if let Err(e) = es7210.gain_set(&mut i2c_dev, db) {
+                                info!("ES7210 gain set failed: {:?}", Debug2Format(&e));
+                            }
+                        }
+
+                        last_mic_vol = mic_vol;
+                        last_mic_muted = mic_muted;
+                    }
+                }
+
+                if spk_changed {
+                    let mut es8311_borrow = ES8311.borrow_ref_mut(cs);
+                    if let Some(es8311) = es8311_borrow.as_mut() {
+                        if spk_muted != last_spk_muted {
+                            if let Err(e) = es8311.mute(&mut i2c_dev, spk_muted) {
+                                info!("ES8311 mute failed: {:?}", Debug2Format(&e));
+                            }
+                        }
+
+                        if spk_vol != last_spk_vol {
+                            let vol = speaker_volume_percent(spk_vol);
+                            if let Err(e) = es8311.volume_set(&mut i2c_dev, vol, None) {
+                                info!("ES8311 volume set failed: {:?}", Debug2Format(&e));
+                            }
+                        }
+
+                        last_spk_vol = spk_vol;
+                        last_spk_muted = spk_muted;
+                    }
+                }
+            });
+        }
+
+        Timer::after(Duration::from_millis(100)).await;
+    }
+}
+
+
 // MAIN
 #[allow(clippy::large_stack_frames)]
 #[esp_rtos::main]
@@ -149,11 +235,11 @@ async fn main(spawner: Spawner) -> ! {
     let peripherals = esp_hal::init(config);
 
     esp_alloc::heap_allocator!(#[esp_hal::ram(reclaimed)] size: 73744);
-
+    
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     esp_rtos::start(timg0.timer0);
     info!("Started ESP32-S3-BOX-3!");
-
+   
 
     // GPIO PINS
     let lcd_clk = peripherals.GPIO7;
@@ -399,8 +485,7 @@ async fn main(spawner: Spawner) -> ! {
     let i2s_config = I2sConfig::default()
         .with_sample_rate(Rate::from_hz(16_000))
         .with_data_format(DataFormat::Data16Channel16);
-
-    
+ 
     let mut i2s = I2s::new(
         peripherals.I2S0,
         peripherals.DMA_CH0,
@@ -442,6 +527,8 @@ async fn main(spawner: Spawner) -> ! {
             .build(tx_descriptors);
         let i2s_tx: &'static mut _ = Box::leak(Box::new(i2s_tx));
         spawner.spawn(speaker_task(i2s_tx)).unwrap();
+        let BACKEND_TCP_PORT: u16 = env!("BACKEND_TCP_PORT").parse().expect("Invalid port");
+        spawner.spawn(audio_playback_task(stack, BACKEND_TCP_PORT)).unwrap();        
         spawner.spawn(top_left_button_task(button_top_left)).unwrap();
     }
 

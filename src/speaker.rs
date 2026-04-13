@@ -69,77 +69,70 @@ const PLAYBACK_TCP_TX_BUF_SIZE: usize = 1024;
 #[task]
 pub async fn audio_playback_task(
     stack: &'static embassy_net::Stack<'static>,
-    server_addr: core::net::SocketAddr,
+    listen_port: u16,
 ) {
-    use embassy_net::{IpAddress, tcp::TcpSocket};
-    use embassy_futures::select::select;
-
-    let remote_endpoint = match server_addr {
-        core::net::SocketAddr::V4(v4) => (IpAddress::Ipv4(v4.ip().octets().into()), v4.port()),
-        core::net::SocketAddr::V6(_) => {
-            error!("IPv6 not supported for playback");
-            return;
-        }
-    };
+    use embassy_net::tcp::TcpSocket;
 
     stack.wait_link_up().await;
     stack.wait_config_up().await;
+
+    info!("🔊 listening on port {}", listen_port);
 
     loop {
         let mut rx_buffer = [0u8; PLAYBACK_TCP_RX_BUF_SIZE];
         let mut tx_buffer = [0u8; PLAYBACK_TCP_TX_BUF_SIZE];
         let mut socket = TcpSocket::new(stack.clone(), &mut rx_buffer, &mut tx_buffer);
-        socket.set_timeout(Some(Duration::from_secs(10)));
 
-        info!("🔊 Connecting to audio source at {} ...", server_addr);
-        if let Err(e) = socket.connect(remote_endpoint).await {
-            error!("Playback connect error: {:?}, retry in 15s", e);
-            Timer::after(Duration::from_secs(15)).await;
+        if let Err(e) = socket.accept(listen_port).await {
+            error!("Accept error: {:?}", e);
+            Timer::after(Duration::from_secs(1)).await;
             continue;
         }
-        info!("Playback connected – ready to receive audio");
+
+        info!("audio client connected from {:?}", socket.remote_endpoint());
+        socket.set_timeout(Some(Duration::from_secs(10)));
 
         'stream: loop {
-            // read 4-byte length prefix
+            // read 4-byte prefix (little-endian u32)
             let mut len_buf = [0u8; 4];
             let mut read = 0;
             while read < 4 {
                 match socket.read(&mut len_buf[read..]).await {
                     Ok(0) => {
-                        error!("Connection closed by server");
+                        error!("Connection closed by client");
                         break 'stream;
                     }
                     Ok(n) => read += n,
                     Err(e) => {
-                        error!("Playback read error: {:?}", e);
+                        error!("Read error: {:?}", e);
                         break 'stream;
                     }
                 }
             }
             let sample_count = u32::from_le_bytes(len_buf) as usize;
+
             if sample_count == 0 || sample_count > 4096 {
                 error!("Invalid chunk size: {}", sample_count);
                 break 'stream;
             }
 
-            // read f32 samples
             let mut f32_buf = vec![0u8; sample_count * 4];
             let mut read = 0;
             while read < f32_buf.len() {
                 match socket.read(&mut f32_buf[read..]).await {
                     Ok(0) => {
-                        error!("Connection closed mid‑chunk");
+                        error!("Connection closed mid-chunk");
                         break 'stream;
                     }
                     Ok(n) => read += n,
                     Err(e) => {
-                        error!("Playback read error: {:?}", e);
+                        error!("Read error: {:?}", e);
                         break 'stream;
                     }
                 }
             }
 
-            // Convert f32 > i16 > raw bytes
+            // convert f32 > i16 > raw bytes - push to ring buffer
             let samples_f32: &[f32] = unsafe {
                 core::slice::from_raw_parts(
                     f32_buf.as_ptr() as *const f32,
@@ -169,8 +162,7 @@ pub async fn audio_playback_task(
             }
         }
 
-        info!("Playback disconnected – reconnecting in 5s");
+        info!("Audio client disconnected");
         let _ = socket.close();
-        Timer::after(Duration::from_secs(5)).await;
     }
 }

@@ -2,7 +2,7 @@
 name = "ESP32-S3-BOX-3"
 rust-version = "1.88"
 edition = "2024"
-version = "0.1.5"
+version = "0.1.3"
 
 [dependencies]
 # ESP Ecosystem
@@ -16,6 +16,7 @@ esp-rtos = { version = "0.2.0", features = [
 ] }
 esp-alloc = { version = "0.9.0", features = ["defmt"] } # Mem
 esp-storage  = { version = "0.4.0", features = ["esp32s3"] } 
+#littlefs2 = { version = "0.7.1", default-features = false }
 # ESP-IDF bootloader
 esp-bootloader-esp-idf = { version = "0.4.0", features = ["defmt", "esp32s3"] }
 
@@ -85,7 +86,9 @@ esp-println = { version = "0.16.1", features = ["defmt-espflash", "esp32s3"] }
 heapless = "0.8"
 
 # HTTP API
+barely-fuzzy = { path = "./vendor/barely-fuzzy", default-features = false, features = ["alloc"] }
 tinyapi = { path = "./vendor/tinyapi", features = ["defmt", "log"] }
+yo-esp = { path = "./vendor/yo-esp", features = ["i2s"] }
 #tinyapi = { version = "0.1.1", features = ["defmt", "log"] }
 #aht20-rs = { version = "0.1.0", features = ["task", "defmt", "log"] }
 picoserve = "0.18.0"
@@ -96,7 +99,7 @@ micromath = "2.1.0"
 libm = "0.2"
 
 [features]
-default = ["use_mic"]
+default = ["use_speaker"]
 use_mic = []
 use_speaker = []
 
