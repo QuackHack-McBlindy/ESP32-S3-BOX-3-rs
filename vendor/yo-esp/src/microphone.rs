@@ -1,5 +1,3 @@
-//! I2S microphone driver for ESP32 (using `esp-hal`).
-
 use alloc::vec::Vec;
 use esp_hal::i2s::master::I2sRx;
 use esp_hal::Async;
@@ -17,9 +15,9 @@ const STEREO_SAMPLES_PER_READ: usize = 256;
 const MONO_SAMPLES_PER_READ: usize = STEREO_SAMPLES_PER_READ / 2;
 const DEFAULT_CHUNK_SIZE: usize = 1280;
 
-/// I2S microphone that accumulates mono `f32` samples.
+/// I2S microphone that accumulates mono `f32` samples
 ///
-/// The microphone is assumed to provide stereo 16‑bit PCM data; it averages
+/// the microphone is assumed to provide stereo 16‑bit PCM data; it averages
 /// the two channels to produce a mono signal and normalises to `f32` in `[-1.0, 1.0]`.
 pub struct Microphone {
     i2s_rx: I2sRx<'static, Async>,
@@ -32,14 +30,14 @@ pub struct Microphone {
 }
 
 impl Microphone {
-    /// Create a new microphone instance with the default chunk size (1280).
+    /// create a new microphone instance with the default chunk size (1280).
     pub fn new(i2s_rx: I2sRx<'static, Async>) -> Self {
         Self::with_chunk_size(i2s_rx, DEFAULT_CHUNK_SIZE)
     }
 
-    /// Create a new microphone with a custom chunk size.
+    /// create a new microphone with a custom chunk size.
     ///
-    /// The chunk size must be a multiple of `MONO_SAMPLES_PER_READ` (128)
+    /// the chunk size must be a multiple of `MONO_SAMPLES_PER_READ` (128)
     /// for correct operation, though the implementation will work with any size.
     pub fn with_chunk_size(i2s_rx: I2sRx<'static, Async>, chunk_size: usize) -> Self {
         Self {
@@ -59,7 +57,7 @@ impl AudioSource for Microphone {
 
     async fn read_chunk(&mut self) -> Result<(AudioChunk, bool), Self::Error> {
         while self.accum_buffer.len() < self.chunk_size {
-            // Read one stereo block from I2S.
+            // read one stereo block from I2S
             if self
                 .i2s_rx
                 .read_dma_async(&mut self.stereo_buffer)
@@ -69,7 +67,7 @@ impl AudioSource for Microphone {
                 return Err(());
             }
 
-            // Interpret raw bytes as i16 samples (little‑endian).
+            // interpret raw bytes as i16 samples (little‑endian).
             let stereo = unsafe {
                 core::slice::from_raw_parts(
                     self.stereo_buffer.as_ptr() as *const i16,
@@ -77,12 +75,12 @@ impl AudioSource for Microphone {
                 )
             };
 
-            // Average left/right pairs -> mono i16.
+            // average left/right pairs > mono i16
             for (i, chunk) in stereo.chunks(2).enumerate() {
                 self.mono_i16[i] = ((chunk[0] as i32 + chunk[1] as i32) / 2) as i16;
             }
 
-            // Convert to f32 in range [-1.0, 1.0].
+            // convert to f32 in range [-1.0, 1.0].
             for (i, &sample) in self.mono_i16.iter().enumerate() {
                 self.mono_f32[i] = sample as f32 / 32768.0;
             }
@@ -94,7 +92,7 @@ impl AudioSource for Microphone {
         // Drain exactly `chunk_size` samples.
         let chunk: Vec<f32> = self.accum_buffer.drain(..self.chunk_size).collect();
 
-        // Silence detection (all samples exactly zero).
+        // Silence Detection
         let all_zero = chunk.iter().all(|&s| s == 0.0);
         if all_zero {
             if !self.silent {

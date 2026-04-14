@@ -142,6 +142,8 @@ async fn backlight_task(mut channel: &'static mut Channel<'static, LowSpeed>) {
     }
 }
 
+use embassy_net::Ipv4Address;
+pub static CURRENT_IP: AtomicU32 = AtomicU32::new(0);
 
 pub static MIC_VOLUME: AtomicU8 = AtomicU8::new(72);
 pub static SPEAKER_VOLUME: AtomicU8 = AtomicU8::new(58);
@@ -226,6 +228,7 @@ pub async fn audio_settings_task(i2c_bus: &'static CsMutex<RefCell<I2cBus>>) {
     }
 }
 
+use tinyapi::http_get;
 
 // MAIN
 #[allow(clippy::large_stack_frames)]
@@ -258,11 +261,19 @@ async fn main(spawner: Spawner) -> ! {
     let i2s_bclk = peripherals.GPIO17;
     let i2s_lrclk = peripherals.GPIO45;
     //let i2s_bclk_rx = unsafe { GPIO17::steal() };
-    //let i2s_lrclk_rx = unsafe { GPIO45::steal() };
-          
+    //let i2s_lrclk_rx = unsafe { GPIO45::steal() };          
     let i2s_mclk = peripherals.GPIO2;
     let i2s_din = peripherals.GPIO16;
     let i2s_dout = peripherals.GPIO15;
+
+    let mut flex_bclk = Flex::new(i2s_bclk);
+    let mut flex_lrclk = Flex::new(i2s_lrclk);
+    let mut flex_mclk = Flex::new(i2s_mclk);    
+
+    let (input_lrclk, output_lrclk) = flex_lrclk.split();
+    let (input_mclk, output_mclk) = flex_mclk.split();
+    let (input_bclk, output_bclk) = flex_bclk.split();
+    
 
     let button_top_left = Input::new(
         peripherals.GPIO0,
@@ -473,7 +484,11 @@ async fn main(spawner: Spawner) -> ! {
         }
         Timer::after(Duration::from_millis(500)).await;
     };
-    info!("IP: {}", ip);
+    let ip_addr = ip.address();
+    let ip_raw = u32::from(ip_addr);
+    CURRENT_IP.store(ip_raw, Ordering::Relaxed);
+    info!("IP: {}", ip_addr);
+    
     
 
 
@@ -491,7 +506,7 @@ async fn main(spawner: Spawner) -> ! {
         peripherals.DMA_CH0,
         i2s_config,
     ).unwrap() 
-    .with_mclk(i2s_mclk)
+    .with_mclk(output_mclk)
     .into_async();
 
     Timer::after(Duration::from_millis(10)).await;
@@ -511,8 +526,8 @@ async fn main(spawner: Spawner) -> ! {
         };
      
         let i2s_rx = i2s.i2s_rx
-            .with_bclk(i2s_bclk)
-            .with_ws(i2s_lrclk)
+            .with_bclk(output_bclk)
+            .with_ws(output_lrclk)
             .with_din(i2s_din)
             .build(rx_descriptors);
         spawner.spawn(microphone::audio_capture_task(i2s_rx, stack, remote_addr)).unwrap();
@@ -521,8 +536,8 @@ async fn main(spawner: Spawner) -> ! {
     #[cfg(feature = "use_speaker")]
     {
         let i2s_tx = i2s.i2s_tx
-            .with_bclk(i2s_bclk)
-            .with_ws(i2s_lrclk)
+            .with_bclk(output_bclk)
+            .with_ws(output_lrclk)
             .with_dout(i2s_dout)
             .build(tx_descriptors);
         let i2s_tx: &'static mut _ = Box::leak(Box::new(i2s_tx));
@@ -551,6 +566,15 @@ async fn main(spawner: Spawner) -> ! {
     Timer::after(Duration::from_millis(1500)).await;
 
 
+
+    //let body = tinyapi::http_get::<4096>("my.domain.org", "/playlist.m3u", stack).await.unwrap();    
+    //let text = core::str::from_utf8(&body).unwrap();    
+    //for (idx, line) in text.lines().enumerate() {
+    //    if idx == 0 || idx == 2 {
+     //       info!("Line {}: {}", idx + 1, line);
+    //    }
+    //}
+
     loop { // calculate battery %
         let raw = adc.read_blocking(&mut adc_pin);
         let pin_voltage = raw as f32 * 1100.0 / 4095.0 / 1000.0;
@@ -576,4 +600,4 @@ async fn main(spawner: Spawner) -> ! {
     
         Timer::after(Duration::from_secs(60)).await;
     }
-}    
+}

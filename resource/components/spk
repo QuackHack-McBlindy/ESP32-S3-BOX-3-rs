@@ -1,0 +1,6 @@
+Speaker audio:
+Format	    WAV (PCM)
+Codec	    pcm_s16le
+Sample rate	16 kHz
+Bit depth	16-bit
+Channel     Stereo

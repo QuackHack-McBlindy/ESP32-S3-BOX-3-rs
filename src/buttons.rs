@@ -9,7 +9,6 @@ pub async fn top_left_button_task(button: Input<'static>) {
 
     loop {
         if button.is_low() {
-            speaker::play_ding().await;
             defmt::info!("Top-Left Button pressed!");
             speaker::play_ding().await;
 

@@ -2,16 +2,13 @@ use tinyapi::{log, register_route, Request, Response};
 use defmt::info;
 use alloc::format;
 use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
-use crate::BACKLIGHT_PERCENT;
+use embassy_net::Ipv4Address;
+use alloc::string::String;
 use crate::media;
 use crate::aht20::HUMIDITY;
 use crate::aht20::TEMPERATURE;
 use crate::presence::PRESENCE;
-
-use crate::MIC_VOLUME;
-use crate::SPEAKER_VOLUME;
-use crate::MIC_MUTED;
-use crate:: SPEAKER_MUTED;
+use crate::{BATTERY_PERCENT, BATTERY_VOLTAGE, RSSI, CURRENT_IP, MIC_VOLUME, SPEAKER_VOLUME, MIC_MUTED, SPEAKER_MUTED, BACKLIGHT_PERCENT};
 
 pub static POWER_STATE: AtomicBool = AtomicBool::new(true);
 pub static DISPLAY_STATE: AtomicBool = AtomicBool::new(true);
@@ -151,7 +148,7 @@ fn detected_handler(req: Request<'_>) -> Response {
 
 fn voice_win_handler(req: Request<'_>) -> Response {
     let value = "0";
-    info!("Setting brightness to {}", value);
+ let ip_raw = CURRENT_IP.load(Ordering::Relaxed);   info!("Setting brightness to {}", value);
     if let Ok(percent) = value.parse::<u8>() {
         let percent = percent.clamp(0, 80);
         BACKLIGHT_PERCENT.store(percent, Ordering::Relaxed);
@@ -181,23 +178,48 @@ fn media_handler(req: Request<'_>) -> Response {
     Response::text(status)
 }
 
+
+
 fn sensor_fetcher(req: Request<'_>) -> Response {
     let sensor_name = req.param("value").unwrap_or("unknown");
     info!("Sensor fetch requested: {}", sensor_name);
 
-    let value = match sensor_name {
-        "temp" | "temperature" => "23.6",
-        "hum" | "humidity" => "48",
-        "battery" | "battery_level" | "battery_percentage" => "78",
-        "bbattery_voltage" | "voltage" => "3.84",
-        "occupancy" | "motion" | "presence" => "Clear",
-        "rssi" | "wifi_signal" | "wifi" => "-54",
-        "ip" => "192.168.1.122",
-        "uptime" => "3d 14h",
-        "firmware" | "version" => "v2.1.0",
-        _ => "unknown",
+    let battery_percent = BATTERY_PERCENT.load(Ordering::Relaxed);
+    let battery_voltage = BATTERY_VOLTAGE.load(Ordering::Relaxed);
+    let rssi = RSSI.load(Ordering::Relaxed);
+    let mic_vol = MIC_VOLUME.load(Ordering::Relaxed);
+    let spk_vol = SPEAKER_VOLUME.load(Ordering::Relaxed);
+    let mic_muted = MIC_MUTED.load(Ordering::Relaxed);
+    let spk_muted = SPEAKER_MUTED.load(Ordering::Relaxed);
+    let temp = TEMPERATURE.load(Ordering::Relaxed);
+    let hum = HUMIDITY.load(Ordering::Relaxed);
+    let presence = PRESENCE.load(Ordering::Relaxed);
+    let brightness = BACKLIGHT_PERCENT.load(Ordering::Relaxed);
+    let ip_raw = CURRENT_IP.load(Ordering::Relaxed);
+    let ip = Ipv4Address::from(ip_raw);
+    // let uptime
+    // let version
+    // let media
+    
+
+    let response_str = match sensor_name {
+        "temp" | "temperature" => format!("{}", temp),
+        "hum" | "humidity" => format!("{}", hum),
+        "battery" | "battery_level" | "battery_percentage" => format!("{}", battery_percent),
+        "battery_voltage" | "voltage" => format!("{}", battery_voltage),
+        "brightness" | "display" => format!("{}", brightness),
+        "occupancy" | "motion" | "presence" => format!("{}", presence),
+        "rssi" | "wifi_signal" | "wifi" => format!("{}", rssi),
+        "ip" => format!("{}", ip),
+        "ir" => String::from("11111"),
+        "media" => String::from("Nothing playing.."),
+        "speaker" => format!("{}", spk_vol),
+        "mic" => format!("{}", mic_vol),
+        "uptime" => format!("1 hour 3 minutes"),
+        "firmware" | "version" => format!("1.0.1"),
+        _ => format!("unknown")
     };
-    Response::text(value)
+    Response::text(&response_str)
 }
 
 fn favicon_handler(_req: Request<'_>) -> Response {
