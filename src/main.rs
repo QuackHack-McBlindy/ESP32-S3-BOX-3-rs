@@ -110,10 +110,10 @@ esp_bootloader_esp_idf::esp_app_desc!(
 const SSID: &str = env!("WIFI_SSID");
 const PASSWORD: &str = env!("WIFI_PASSWORD");
 const BACKEND_TCP_HOST: &str = env!("BACKEND_TCP_HOST");
+const FW_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-//use esp_hal::peripherals::GPIO17;
-//use esp_hal::peripherals::GPIO45;
 
+use esp_hal::peripherals::GPIO2;
 
 const SAMPLE_RATE: u32 = 16000;
 const BUFFER_SIZE: usize = 4096;
@@ -241,7 +241,7 @@ async fn main(spawner: Spawner) -> ! {
     
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     esp_rtos::start(timg0.timer0);
-    info!("Started ESP32-S3-BOX-3!");
+    info!("Started ESP32-S3-BOX-3 (version {})", FW_VERSION);
    
 
     // GPIO PINS
@@ -260,9 +260,10 @@ async fn main(spawner: Spawner) -> ! {
 
     let i2s_bclk = peripherals.GPIO17;
     let i2s_lrclk = peripherals.GPIO45;
-    //let i2s_bclk_rx = unsafe { GPIO17::steal() };
-    //let i2s_lrclk_rx = unsafe { GPIO45::steal() };          
+    let i2s_bclk_rx = unsafe { GPIO17::steal() };
+    let i2s_lrclk_rx = unsafe { GPIO45::steal() };          
     let i2s_mclk = peripherals.GPIO2;
+    let i2s_mclk_rx = unsafe { GPIO2::steal() };          
     let i2s_din = peripherals.GPIO16;
     let i2s_dout = peripherals.GPIO15;
 
@@ -494,13 +495,16 @@ async fn main(spawner: Spawner) -> ! {
 
     // I2S Audio setup 
     // DMA buffers
-    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) =
-        dma_buffers!(BUFFER_SIZE);
-
+    
+    // I2S Audio setup 
+    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(BUFFER_SIZE);
+    
     let i2s_config = I2sConfig::default()
         .with_sample_rate(Rate::from_hz(16_000))
-        .with_data_format(DataFormat::Data16Channel16);
- 
+        .with_data_format(DataFormat::Data16Channel16)
+        .with_channels(Channels::STEREO);
+    
+    // Create the I2S instance (moves peripherals.I2S0)
     let mut i2s = I2s::new(
         peripherals.I2S0,
         peripherals.DMA_CH0,
@@ -508,8 +512,20 @@ async fn main(spawner: Spawner) -> ! {
     ).unwrap() 
     .with_mclk(output_mclk)
     .into_async();
-
+    
     Timer::after(Duration::from_millis(10)).await;
+    // steal provides access    
+    let i2s0 = unsafe { esp_hal::peripherals::I2S0::steal() };
+    let i2s_regs = i2s0.register_block();
+
+    // set rx_slave_mod in RX_CONF
+    i2s_regs.rx_conf().modify(|_, w| w.rx_slave_mod().set_bit());
+    // set the signal loopback flag in TX_CONF_REG
+    i2s_regs.tx_conf().modify(|_, w| w.sig_loopback().set_bit());
+
+    let status = i2s_regs.int_st().read();
+    info!("I2S interrupt status: raw = 0x{:08X}", status.bits());
+    
 
     #[cfg(feature = "use_mic")]
     {
@@ -526,12 +542,12 @@ async fn main(spawner: Spawner) -> ! {
         };
      
         let i2s_rx = i2s.i2s_rx
-            .with_bclk(output_bclk)
-            .with_ws(output_lrclk)
             .with_din(i2s_din)
             .build(rx_descriptors);
         spawner.spawn(microphone::audio_capture_task(i2s_rx, stack, remote_addr)).unwrap();
     }
+
+    Timer::after(Duration::from_millis(109)).await;
 
     #[cfg(feature = "use_speaker")]
     {
@@ -563,17 +579,9 @@ async fn main(spawner: Spawner) -> ! {
     spawner.spawn(aht20::sensor_task(i2c_b_mutex)).unwrap();
     // motion
     spawner.spawn(presence::occupancy_task(occupancy)).unwrap();
-    Timer::after(Duration::from_millis(1500)).await;
+    // sync time
+    //spawner.spawn(ntp::ntp_task(stack)).unwrap();
 
-
-
-    //let body = tinyapi::http_get::<4096>("my.domain.org", "/playlist.m3u", stack).await.unwrap();    
-    //let text = core::str::from_utf8(&body).unwrap();    
-    //for (idx, line) in text.lines().enumerate() {
-    //    if idx == 0 || idx == 2 {
-     //       info!("Line {}: {}", idx + 1, line);
-    //    }
-    //}
 
     loop { // calculate battery %
         let raw = adc.read_blocking(&mut adc_pin);
@@ -601,3 +609,4 @@ async fn main(spawner: Spawner) -> ! {
         Timer::after(Duration::from_secs(60)).await;
     }
 }
+

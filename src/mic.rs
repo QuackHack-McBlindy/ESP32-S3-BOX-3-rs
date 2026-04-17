@@ -33,6 +33,7 @@ impl Microphone {
         while self.accum_buffer.len() < OWW_MODEL_CHUNK_SIZE {
 
             if let Err(_) = self.i2s_rx.read_dma_async(&mut self.stereo_buffer).await {
+            //if let Err(_) = self.i2s_rx.read_dma_circular_async(&mut self.stereo_buffer).await {                        
                 return Err(());
             }
 

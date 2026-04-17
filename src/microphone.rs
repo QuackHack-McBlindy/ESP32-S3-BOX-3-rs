@@ -132,7 +132,9 @@ pub async fn audio_capture_task(
                 embassy_futures::select::Either::First(Ok(1)) => {
                     match byte_buf[0] {
                         0x01 => {
+                            // hmm can i mic.drop() here without task exit
                             media::on_wake_word_detected();
+                            // and create new mic here ?
                         }
                         0x03 => {
                             media::on_command_executed();

@@ -8,10 +8,11 @@ use crate::media;
 use crate::aht20::HUMIDITY;
 use crate::aht20::TEMPERATURE;
 use crate::presence::PRESENCE;
-use crate::{BATTERY_PERCENT, BATTERY_VOLTAGE, RSSI, CURRENT_IP, MIC_VOLUME, SPEAKER_VOLUME, MIC_MUTED, SPEAKER_MUTED, BACKLIGHT_PERCENT};
+use crate::{BATTERY_PERCENT, BATTERY_VOLTAGE, RSSI, CURRENT_IP, MIC_VOLUME, SPEAKER_VOLUME, MIC_MUTED, SPEAKER_MUTED, BACKLIGHT_PERCENT, FW_VERSION};
 
 pub static POWER_STATE: AtomicBool = AtomicBool::new(true);
 pub static DISPLAY_STATE: AtomicBool = AtomicBool::new(true);
+
 
 
 
@@ -198,7 +199,7 @@ fn sensor_fetcher(req: Request<'_>) -> Response {
     let ip_raw = CURRENT_IP.load(Ordering::Relaxed);
     let ip = Ipv4Address::from(ip_raw);
     // let uptime
-    // let version
+    let version = FW_VERSION;
     // let media
     
 
@@ -215,8 +216,9 @@ fn sensor_fetcher(req: Request<'_>) -> Response {
         "media" => String::from("Nothing playing.."),
         "speaker" => format!("{}", spk_vol),
         "mic" => format!("{}", mic_vol),
-        "uptime" => format!("1 hour 3 minutes"),
-        "firmware" | "version" => format!("1.0.1"),
+        "uptime" => format!("19:34"),        
+        "time" => format!("19:34"),        
+        "firmware" | "version" => format!("{}", version),
         _ => format!("unknown")
     };
     Response::text(&response_str)
