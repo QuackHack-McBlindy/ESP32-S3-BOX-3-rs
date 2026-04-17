@@ -2,7 +2,7 @@
 name = "ESP32-S3-BOX-3"
 rust-version = "1.88"
 edition = "2024"
-version = "0.1.5"
+version = "0.1.6"
 
 [dependencies]
 #esp32s3 = "0.35.0"
