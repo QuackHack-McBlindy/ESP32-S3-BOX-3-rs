@@ -220,7 +220,7 @@ curl http://<esp-ip>:80/api/settings/display/brightness/75
 - Digital Output GPIO: 15 (I2S output) 
 - 16-bit, 48 kHz sample rate
 - built-in 8Ω/1W speaker (NS4150)
-- Audio Codec (ES8311)
+- Audio Codec (ES8311) 0x18
 - Channel Left
 
 ### **🎙️ Microphone (ES7210)**
@@ -229,6 +229,7 @@ curl http://<esp-ip>:80/api/settings/display/brightness/75
 - Dual digital microphones
 - Audio Codec (ES7210)
 - 16-bit, 16 kHz sample rate
+- 0x40
 
 ### **🕵️ Presence Sensor (MS58-3909S68U4)**
 
@@ -249,7 +250,7 @@ curl http://<esp-ip>:80/api/settings/display/brightness/75
 
 ### **📡 Infrared (IR)**
 
-- Emitter (IRM-H638T)
+- Emitter (IRM-H638T) 0x68 ?
 - Receiver (IR-6721C/TR8) 
 
 

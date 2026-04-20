@@ -69,6 +69,13 @@ use embedded_graphics::{
     Drawable,
 };
 
+type DisplayType = Ili9341<
+    SPIInterface<
+        ExclusiveDevice<Spi<'static, Blocking>, Output<'static>, Delay>,
+        Output<'static>,
+    >,
+    Output<'static>,
+>;
 
 // LOAD MODULES
 mod macros; // best first
@@ -100,6 +107,7 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
 extern crate alloc;
 use alloc::boxed::Box;
 use alloc::format;
+use alloc::string::ToString;
 
 // bootloader
 esp_bootloader_esp_idf::esp_app_desc!(
@@ -112,6 +120,8 @@ const PASSWORD: &str = env!("WIFI_PASSWORD");
 const BACKEND_TCP_HOST: &str = env!("BACKEND_TCP_HOST");
 const FW_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+
+pub static DISPLAY: CsMutex<RefCell<Option<DisplayType>>> = CsMutex::new(RefCell::new(None));
 
 use esp_hal::peripherals::GPIO2;
 
@@ -229,6 +239,86 @@ pub async fn audio_settings_task(i2c_bus: &'static CsMutex<RefCell<I2cBus>>) {
 }
 
 use tinyapi::http_get;
+
+
+#[embassy_executor::task]
+async fn display_task() {
+    use embedded_graphics::{
+        geometry::Point,
+        mono_font::{MonoTextStyle, ascii::FONT_8X13},
+        text::{Text, Alignment},
+        pixelcolor::Rgb565,
+        prelude::*,
+    };
+
+    let style = MonoTextStyle::new(&FONT_8X13, Rgb565::WHITE);
+    let mut last_battery = 255;
+    let mut last_ip = 0u32;
+    let mut last_rssi = 0;
+
+    loop {
+        let battery = BATTERY_PERCENT.load(Ordering::Relaxed);
+        let ip_raw = CURRENT_IP.load(Ordering::Relaxed);
+        let rssi = RSSI.load(Ordering::Relaxed);
+
+        let ip_str = if ip_raw == 0 {
+            "IP: none".to_string()
+        } else {
+            let ip = embassy_net::Ipv4Address::from(ip_raw);
+            format!("IP: {}", ip)
+        };
+
+        if battery != last_battery || ip_raw != last_ip || rssi != last_rssi {
+            // Redraw only when something changes
+            critical_section::with(|cs| {
+                if let Some(display) = DISPLAY.borrow_ref_mut(cs).as_mut() {
+                    // Clear screen with black
+                    display.clear(Rgb565::BLACK).unwrap();
+
+                    // Draw battery
+                    let battery_text = format!("🔋 {}%", battery);
+                    Text::with_alignment(
+                        &battery_text,
+                        Point::new(120, 20),
+                        style,
+                        Alignment::Center,
+                    )
+                    .draw(display)
+                    .unwrap();
+
+                    // Draw IP
+                    Text::with_alignment(
+                        &ip_str,
+                        Point::new(120, 50),
+                        style,
+                        Alignment::Center,
+                    )
+                    .draw(display)
+                    .unwrap();
+
+                    // Draw RSSI
+                    let rssi_text = format!("📶 {} dBm", rssi);
+                    Text::with_alignment(
+                        &rssi_text,
+                        Point::new(120, 80),
+                        style,
+                        Alignment::Center,
+                    )
+                    .draw(display)
+                    .unwrap();
+                }
+            });
+
+            last_battery = battery;
+            last_ip = ip_raw;
+            last_rssi = rssi;
+        }
+
+        Timer::after(Duration::from_millis(500)).await;
+    }
+}
+
+
 
 // MAIN
 #[allow(clippy::large_stack_frames)]
@@ -407,8 +497,9 @@ async fn main(spawner: Spawner) -> ! {
     let backlight_channel: &'static mut _ = Box::leak(Box::new(channel0)); 
     
     // DISPLAY
+    
     let spi_bus = Spi::new(
-        peripherals.SPI2,
+        peripherals.SPI2,   // changed from SPI1
         SpiConfig::default()
             .with_frequency(Rate::from_mhz(40))
             .with_mode(esp_hal::spi::Mode::_0),
@@ -417,27 +508,35 @@ async fn main(spawner: Spawner) -> ! {
     .with_sck(lcd_clk)
     .with_mosi(lcd_mosi)
     .with_miso(NoPin);
-
+    
     let cs = Output::new(lcd_cs, Level::High, OutputConfig::default());
     let dc = Output::new(lcd_dc, Level::Low, OutputConfig::default());
     let rst = Output::new(lcd_rst, Level::Low, OutputConfig::default());
-  
-    let mut delay_spi = Delay::new();
-    let mut delay_display = Delay::new();
     
-    let spi_device = ExclusiveDevice::new(spi_bus, cs, delay_spi).unwrap();
-    let interface = SPIInterface::new(spi_device, dc);
+    let spi_dev = ExclusiveDevice::new(spi_bus, cs, Delay::new()).unwrap();
+    let interface = SPIInterface::new(spi_dev, dc);
+    let mut delay = Delay::new();
     
-    let mut display = Ili9341::new(
+    let display = Ili9341::new(
         interface,
         rst,
-        &mut delay_display,
-        Orientation::Portrait,
+        &mut delay,
+        Orientation::Landscape,
         DisplaySize240x320,
     ).unwrap();
     
-    display.clear(Rgb565::BLACK).unwrap();
- 
+    critical_section::with(|cs| {
+        DISPLAY.borrow_ref_mut(cs).replace(display);
+    });
+
+
+
+    // Set backlight brightness
+    BACKLIGHT_PERCENT.store(80, Ordering::Relaxed);
+
+  
+
+
 
     // WIFI Setup    
     let radio = &*mk_static!(esp_radio::Controller<'static>, esp_radio::init().expect("WiFi - ❌ Failed to initialize controller"));
@@ -514,18 +613,43 @@ async fn main(spawner: Spawner) -> ! {
     .into_async();
     
     Timer::after(Duration::from_millis(10)).await;
-    // steal provides access    
-    let i2s0 = unsafe { esp_hal::peripherals::I2S0::steal() };
-    let i2s_regs = i2s0.register_block();
 
-    // set rx_slave_mod in RX_CONF
-    i2s_regs.rx_conf().modify(|_, w| w.rx_slave_mod().set_bit());
-    // set the signal loopback flag in TX_CONF_REG
+    // set
+    let i2s_regs = unsafe { &*esp_hal::peripherals::I2S0::PTR };
     i2s_regs.tx_conf().modify(|_, w| w.sig_loopback().set_bit());
+    i2s_regs.rx_conf().modify(|_, w| w.rx_slave_mod().set_bit());
+    i2s_regs.tx_conf().modify(|_, w| w.tx_slave_mod().clear_bit());
 
-    let status = i2s_regs.int_st().read();
-    info!("I2S interrupt status: raw = 0x{:08X}", status.bits());
-    
+    // apply
+    //i2s_regs.tx_conf().modify(|_, w| w.tx_update().set_bit());
+    //i2s_regs.rx_conf().modify(|_, w| w.rx_update().set_bit());
+    Timer::after(Duration::from_micros(10)).await;
+    // print
+    let tx_conf = i2s_regs.tx_conf().read();
+    let rx_conf = i2s_regs.rx_conf().read();
+    info!("TX_CONF: sig_loopback={}, tx_slave_mod={}", 
+          tx_conf.sig_loopback().bit(), tx_conf.tx_slave_mod().bit());
+    info!("RX_CONF: rx_slave_mod={}", rx_conf.rx_slave_mod().bit());
+
+
+    Timer::after(Duration::from_millis(109)).await;
+
+    #[cfg(feature = "use_speaker")]
+    {
+        let i2s_tx = i2s.i2s_tx
+            .with_dout(i2s_dout)         
+            .with_bclk(output_bclk)
+            .with_ws(output_lrclk)
+            .build(tx_descriptors);
+        let i2s_tx: &'static mut _ = Box::leak(Box::new(i2s_tx));
+        spawner.spawn(speaker_task(i2s_tx)).unwrap();
+        let BACKEND_TCP_PORT: u16 = env!("BACKEND_TCP_PORT").parse().expect("Invalid port");
+        spawner.spawn(audio_playback_task(stack, BACKEND_TCP_PORT)).unwrap();        
+        spawner.spawn(top_left_button_task(button_top_left)).unwrap();
+    }
+
+
+    Timer::after(Duration::from_millis(1000)).await;
 
     #[cfg(feature = "use_mic")]
     {
@@ -542,28 +666,13 @@ async fn main(spawner: Spawner) -> ! {
         };
      
         let i2s_rx = i2s.i2s_rx
-            .with_din(i2s_din)
+            .with_din(i2s_din)              
+            .with_bclk(i2s_bclk_rx)
+            .with_ws(i2s_lrclk_rx)
             .build(rx_descriptors);
         spawner.spawn(microphone::audio_capture_task(i2s_rx, stack, remote_addr)).unwrap();
     }
 
-    Timer::after(Duration::from_millis(109)).await;
-
-    #[cfg(feature = "use_speaker")]
-    {
-        let i2s_tx = i2s.i2s_tx
-            .with_bclk(output_bclk)
-            .with_ws(output_lrclk)
-            .with_dout(i2s_dout)
-            .build(tx_descriptors);
-        let i2s_tx: &'static mut _ = Box::leak(Box::new(i2s_tx));
-        spawner.spawn(speaker_task(i2s_tx)).unwrap();
-        let BACKEND_TCP_PORT: u16 = env!("BACKEND_TCP_PORT").parse().expect("Invalid port");
-        spawner.spawn(audio_playback_task(stack, BACKEND_TCP_PORT)).unwrap();        
-        spawner.spawn(top_left_button_task(button_top_left)).unwrap();
-    }
-
-    Timer::after(Duration::from_millis(1000)).await;
 
     // init API routes
     api::init_routes().await;
@@ -579,9 +688,7 @@ async fn main(spawner: Spawner) -> ! {
     spawner.spawn(aht20::sensor_task(i2c_b_mutex)).unwrap();
     // motion
     spawner.spawn(presence::occupancy_task(occupancy)).unwrap();
-    // sync time
-    //spawner.spawn(ntp::ntp_task(stack)).unwrap();
-
+    spawner.spawn(display_task()).unwrap();
 
     loop { // calculate battery %
         let raw = adc.read_blocking(&mut adc_pin);

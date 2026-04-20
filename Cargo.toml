@@ -7,7 +7,7 @@ version = "0.1.6"
 [dependencies]
 #esp32s3 = "0.35.0"
 # ESP Ecosystem
-esp-hal = { version = "~1.0", features = ["defmt", "esp32s3", "unstable"] }
+esp-hal = { version = "~1.0", features = ["defmt", "esp32s3", "unstable", "psram"] }
 esp-rtos = { version = "0.2.0", features = [
   "defmt",
   "embassy",
@@ -25,7 +25,8 @@ esp-bootloader-esp-idf = { version = "0.4.0", features = ["defmt", "esp32s3"] }
 # Display
 ili9341 = "0.6.0"
 display-interface-spi = "0.5.0"
-embedded-graphics = "0.8.0"
+embedded-graphics = "0.8"
+embedded-graphics-core = "0.4"
 
 # Bluetooth
 bt-hci = "0.6.0"
@@ -98,11 +99,11 @@ reqwless = { version = "0.5", default-features = false }
 # Math
 micromath = "2.1.0"
 libm = "0.2"
-
+nanomp3 = "0.1"
 
 
 [features]
-default = ["use_mic", "use_speaker"]
+default = ["use_speaker", "use_mic"]
 use_mic = []
 use_speaker = []
 

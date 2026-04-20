@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ESP32-S3-BOX-3"
-version = "0.1.3"
+version = "0.1.6"
 dependencies = [
  "barely-fuzzy",
  "bt-hci",
@@ -17,6 +17,7 @@ dependencies = [
  "embassy-sync 0.8.0",
  "embassy-time",
  "embedded-graphics",
+ "embedded-graphics-core",
  "embedded-hal 1.0.0",
  "embedded-hal-bus",
  "embedded-io 0.7.1",
@@ -33,6 +34,7 @@ dependencies = [
  "ili9341",
  "libm",
  "micromath",
+ "nanomp3",
  "picoserve",
  "rand_core 0.6.4",
  "reqwless",
@@ -1716,6 +1718,12 @@ name = "micromath"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3c8dda44ff03a2f238717214da50f65d5a53b45cd213a7370424ffdb6fae815"
+
+[[package]]
+name = "nanomp3"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f69bdf7e634dc76798adc292ebd4f6e8e125cde6843a264fe398c52c3f7e8541"
 
 [[package]]
 name = "nb"
