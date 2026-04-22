@@ -42,7 +42,6 @@ dependencies = [
  "static_cell",
  "tinyapi",
  "trouble-host",
- "yo-esp",
 ]
 
 [[package]]
@@ -2625,22 +2624,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
-]
-
-[[package]]
-name = "yo-esp"
-version = "0.1.0"
-dependencies = [
- "critical-section",
- "defmt 1.0.1",
- "embassy-executor",
- "embassy-futures",
- "embassy-net",
- "embassy-sync 0.8.0",
- "embassy-time",
- "esp-alloc",
- "esp-hal",
- "heapless 0.8.0",
 ]
 
 [[package]]

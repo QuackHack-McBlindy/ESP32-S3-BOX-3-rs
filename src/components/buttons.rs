@@ -1,7 +1,7 @@
 use embassy_executor::task;
 use embassy_time::{Timer, Duration};
 use esp_hal::gpio::Input;
-use crate::speaker;
+use crate::components::speaker;
 
 
 #[task]

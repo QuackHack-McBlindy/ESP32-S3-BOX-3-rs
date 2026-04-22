@@ -1,7 +1,7 @@
 use core::cell::RefCell;
 use critical_section::Mutex;
 use defmt::{info, warn, error};
-use crate::api::*;
+use crate::base::api::*;
 use core::sync::atomic::Ordering;
 use crate::{I2C_BUS, ES7210, ES8311};
 use defmt::Format;
@@ -53,7 +53,7 @@ pub fn on_wake_word_detected() {
     let current = get_va_phase();
     if current == VoiceAssistantPhase::Listening {
         set_va_phase(VoiceAssistantPhase::Detected);
-        crate::speaker::play_ding();
+        crate::components::speaker::play_ding();
         info!("💥 DETECTED Wake Word!");
         BACKLIGHT_PERCENT.store(70, Ordering::Relaxed);
     } else {
@@ -66,7 +66,7 @@ pub fn on_command_executed() {
     let current = get_va_phase();
     if current == VoiceAssistantPhase::Detected {
         transition_va_phase(VoiceAssistantPhase::Executed);
-        crate::speaker::play_done();
+        crate::components::speaker::play_done();
         info!("✅ Executed command!");
         BACKLIGHT_PERCENT.store(0, Ordering::Relaxed);
     } else {
@@ -79,7 +79,7 @@ pub fn on_command_failed() {
     let current = get_va_phase();
     if current == VoiceAssistantPhase::Detected {
         transition_va_phase(VoiceAssistantPhase::Failed);
-        crate::speaker::play_fail();
+        crate::components::speaker::play_fail();
         info!("💩 FAILED execution!");
         BACKLIGHT_PERCENT.store(0, Ordering::Relaxed);
     } else {

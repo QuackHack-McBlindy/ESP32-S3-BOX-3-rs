@@ -17,7 +17,6 @@ esp-rtos = { version = "0.2.0", features = [
 ] }
 esp-alloc = { version = "0.9.0", features = ["defmt"] } # Mem
 esp-storage  = { version = "0.4.0", features = ["esp32s3"] } 
-#littlefs2 = { version = "0.7.1", default-features = false }
 # ESP-IDF bootloader
 esp-bootloader-esp-idf = { version = "0.4.0", features = ["defmt", "esp32s3"] }
 
@@ -90,9 +89,6 @@ heapless = "0.8"
 # HTTP API
 barely-fuzzy = { path = "./vendor/barely-fuzzy", default-features = false, features = ["alloc"] }
 tinyapi = { path = "./vendor/tinyapi", features = ["defmt", "log"] }
-yo-esp = { path = "./vendor/yo-esp", features = ["i2s"] }
-#tinyapi = { version = "0.1.1", features = ["defmt", "log"] }
-#aht20-rs = { version = "0.1.0", features = ["task", "defmt", "log"] }
 picoserve = "0.18.0"
 reqwless = { version = "0.5", default-features = false }
 

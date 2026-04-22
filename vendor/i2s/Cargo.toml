@@ -1,0 +1,18 @@
+[package]
+name = "i2s_s3"
+version = "0.1.0"
+edition = "2024"
+
+description = "Improved I2S peripheral driver for ESP32S3 with a focus on full duplex"
+license = "MIT"
+repository = "https://github.com/QuackHack-McBlindy/tinyapi"
+authors = ["QuackHack-McBlindy"]
+readme = "README.md"
+keywords = ["embedded", "http", "api", "embassy", "no-std"]
+categories = ["embedded", "network-programming"]
+
+
+
+[dependencies]
+esp32s3 = "0.35.2"
+

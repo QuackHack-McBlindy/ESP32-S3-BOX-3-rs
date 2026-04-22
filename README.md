@@ -134,7 +134,7 @@ Logs will be at: `http://<esp-ip>:80/logs`
 
 #### **API**
 
-The API is designed to be easily expandable, it will most likely grow, best to check [src/api.rs](https://github.com/QuackHack-McBlindy/ESP32-S3-BOX-3-rs/blob/main/src/api.rs) for supported endpoints.    
+The API is designed to be easily expandable, it will most likely grow, best to check [src/base/api.rs](https://github.com/QuackHack-McBlindy/ESP32-S3-BOX-3-rs/blob/main/src/base/api.rs) for supported endpoints.    
 *or try fetch your available endpoints at:* `curl http://<esp-ip>:80/api`   
   
   

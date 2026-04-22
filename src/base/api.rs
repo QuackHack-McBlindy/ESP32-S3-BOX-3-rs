@@ -4,10 +4,10 @@ use alloc::format;
 use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use embassy_net::Ipv4Address;
 use alloc::string::String;
-use crate::media;
-use crate::aht20::HUMIDITY;
-use crate::aht20::TEMPERATURE;
-use crate::presence::PRESENCE;
+use crate::apps::media;
+use crate::components::aht20::HUMIDITY;
+use crate::components::aht20::TEMPERATURE;
+use crate::components::presence::PRESENCE;
 use crate::{BATTERY_PERCENT, BATTERY_VOLTAGE, RSSI, CURRENT_IP, MIC_VOLUME, SPEAKER_VOLUME, MIC_MUTED, SPEAKER_MUTED, BACKLIGHT_PERCENT, FW_VERSION};
 
 pub static POWER_STATE: AtomicBool = AtomicBool::new(true);
@@ -16,7 +16,7 @@ pub static DISPLAY_STATE: AtomicBool = AtomicBool::new(true);
 
 
 
-use crate::media::{PLAYER, PLAYLIST, PlaybackState};
+use media::{PLAYER, PLAYLIST, PlaybackState};
 use alloc::vec;
 
 use esp_hal::time::Instant;
@@ -32,7 +32,7 @@ fn api_list_handler(_req: Request<'_>) -> Response {
 }
 
 fn index_handler(_req: Request<'_>) -> Response {
-    Response::html(include_str!("./../assets/index.html"))
+    Response::html(include_str!("./../../assets/index.html"))
 }
 
 pub fn brightness_handler(req: Request<'_>) -> Response {
@@ -175,7 +175,7 @@ fn ota_handler(_req: Request<'_>) -> Response {
 fn media_handler(req: Request<'_>) -> Response {
     let action = req.param("action").unwrap_or("none");
     info!("Media action: {}", action);
-    let status = crate::media::handle_action(action);
+    let status = crate::apps::media::handle_action(action);
     Response::text(status)
 }
 
@@ -234,7 +234,7 @@ pub static pause_flag: AtomicBool = AtomicBool::new(true);
 
 
 fn js_handler(_req: Request<'_>) -> Response {
-    Response::script(include_str!("./../assets/script.js"))
+    Response::script(include_str!("./../../assets/script.js"))
 }
 
 fn voice_state_handler(req: Request<'_>) -> Response {

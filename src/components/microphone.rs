@@ -8,9 +8,9 @@ use esp_hal::Async;
 use core::net::SocketAddr;
 use alloc::vec::Vec;
 use alloc::vec;
-use crate::speaker;
-use crate::media;
-use crate::mic::Microphone;
+use crate::components::speaker;
+use crate::apps::media;
+use crate::components::mic::Microphone;
 
 const OWW_MODEL_CHUNK_SIZE: usize = 1280;
 const TCP_RX_BUF_SIZE: usize = 1024;

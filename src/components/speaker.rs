@@ -9,15 +9,14 @@ use esp_hal::Async;
 use defmt::{info, error};
 use alloc::vec;
 
-
+const DING_SOUND: &[u8] = include_bytes!("./../../assets/sound/ding_esp.raw");
+const DONE_SOUND: &[u8] = include_bytes!("./../../assets/sound/done_esp.wav");
+const FAIL_SOUND: &[u8] = include_bytes!("./../../assets/sound/fail_esp.wav");
 pub const RING_BUFFER_SIZE: usize = 16384;
 const DMA_BUFFER_SIZE: usize = 2048;
 
 static PIPE: Pipe<CriticalSectionRawMutex, RING_BUFFER_SIZE> = Pipe::new();
 
-const DING_SOUND: &[u8] = include_bytes!("./../assets/sound/ding_esp.raw");
-const DONE_SOUND: &[u8] = include_bytes!("./../assets/sound/done_esp.wav");
-const FAIL_SOUND: &[u8] = include_bytes!("./../assets/sound/fail_esp.wav");
 
 pub fn play(data: &[u8]) -> usize {
     PIPE.try_write(data).unwrap_or(0)
@@ -35,18 +34,9 @@ pub async fn play_sound(sound: &'static [u8]) {
     }
 }
 
-pub async fn play_ding() {
-    play_sound(DING_SOUND).await;
-}
-
-
-pub async fn play_done() {
-    play_sound(DONE_SOUND).await;
-}
-
-pub async fn play_fail() {
-    play_sound(FAIL_SOUND).await;
-}
+pub async fn play_ding() { play_sound(DING_SOUND).await; }
+pub async fn play_done() { play_sound(DONE_SOUND).await; }
+pub async fn play_fail() { play_sound(FAIL_SOUND).await; }
 
 #[task]
 pub async fn speaker_task(i2s_tx: &'static mut I2sTx<'static, Async>) -> ! {
@@ -77,7 +67,7 @@ pub async fn audio_playback_task(
     stack.wait_link_up().await;
     stack.wait_config_up().await;
 
-    info!("🔊 listening on port {}", listen_port);
+    info!("📡 ☑️ 🔊 port {}", listen_port);
 
     loop {
         let mut rx_buffer = [0u8; PLAYBACK_TCP_RX_BUF_SIZE];
@@ -154,7 +144,7 @@ pub async fn audio_playback_task(
 
             let mut written = 0;
             while written < pcm_bytes.len() {
-                let n = crate::speaker::play(&pcm_bytes[written..]);
+                let n = crate::components::speaker::play(&pcm_bytes[written..]);
                 if n == 0 {
                     Timer::after(Duration::from_micros(500)).await;
                 } else {
