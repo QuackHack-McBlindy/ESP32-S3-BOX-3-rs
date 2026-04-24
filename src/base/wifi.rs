@@ -1,67 +1,77 @@
 use core::sync::atomic::{AtomicI32, Ordering};
-use embassy_executor::Spawner;
-use embassy_futures::select::select;
-use embassy_time::Timer;
-use esp_radio::wifi::{
-    ClientConfig, Config as WifiConfig, ModeConfig, PowerSaveMode, WifiController, WifiDevice,
-    WifiEvent, WifiStaState,
-};
+use embassy_futures::select::{select, Either};
+use embassy_time::{Timer, Duration};
+use esp_radio::wifi::sta::StationConfig;
+use esp_radio::wifi::{Config, PowerSaveMode, WifiController, Interface};
 use defmt::info;
-
-// global RSSI value
+use crate::SSID;
+use crate::PASSWORD;
 pub static CURRENT_RSSI: AtomicI32 = AtomicI32::new(0);
+use crate::alloc::string::ToString;
 
 #[embassy_executor::task]
 pub async fn connection(mut controller: WifiController<'static>) {
-    // power saving
+    let station_config = esp_radio::wifi::sta::StationConfig::default()
+        .with_ssid(crate::SSID)
+        .with_password(crate::PASSWORD.to_string());
+
+    let wifi_config = esp_radio::wifi::Config::Station(station_config);
+
+    controller.set_config(&wifi_config).unwrap();
+
+    // enable power saving
     if let Err(e) = controller.set_power_saving(PowerSaveMode::Maximum) {
         info!("Failed to set power saving: {:?}", e);
     }
 
     loop {
-        if let WifiStaState::Connected = esp_radio::wifi::sta_state() {
-            // update RSSI periodically while connected
-            if let Ok(rssi) = controller.rssi() {
-                CURRENT_RSSI.store(rssi, Ordering::Relaxed);
-            }
-
-            select(
-                controller.wait_for_event(WifiEvent::StaDisconnected),
-                Timer::after(embassy_time::Duration::from_millis(6000)),
-            )
-            .await;
-        }
-
-        // not started - start 
-        if !matches!(controller.is_started(), Ok(true)) {
-            let client_config = ClientConfig::default()
-                .with_ssid(crate::SSID.into())
-                .with_password(crate::PASSWORD.into());
-            let mode_config = ModeConfig::Client(client_config);
-            controller.set_config(&mode_config).unwrap();
-
-            if let Err(e) = controller.start_async().await {
-                info!("Failed to start WiFi: {:?}", e);
-                Timer::after(embassy_time::Duration::from_millis(5000)).await;
-                continue;
-            }
-        }
-
         match controller.connect_async().await {
-            Ok(()) => info!("WiFi - ✅ connected!"),
+            Ok(conn_info) => {
+                info!(
+                    "WiFi - ✅ connected, channel: {}",
+                    conn_info.channel
+                );
+
+                loop {
+                    if let Ok(rssi) = controller.rssi() {
+                        CURRENT_RSSI.store(rssi, Ordering::Relaxed);
+                    }
+
+                    match select(
+                        controller.wait_for_disconnect_async(),
+                        Timer::after(Duration::from_millis(6000)),
+                    )
+                    .await
+                    {
+                        Either::First(result) => {
+                            match result {
+                                Ok(info) => info!(
+                                    "WiFi - ❌ disconnected, reason: {:?}",
+                                    info.reason
+                                ),
+                                Err(e) => info!("WiFi - ❌ disconnect error: {:?}", e),
+                            }
+                            break; // exit inner loop to reconnect
+                        }
+                        Either::Second(()) => {
+                            // timeout – loop again
+                        }
+                    }
+                }
+            }
             Err(e) => {
                 info!("WiFi - ❌ connection failed: {:?}", e);
-                Timer::after(embassy_time::Duration::from_millis(5000)).await;
+                Timer::after(Duration::from_millis(5000)).await;
             }
         }
     }
 }
 
 #[embassy_executor::task]
-pub async fn net_task(mut runner: embassy_net::Runner<'static, WifiDevice<'static>>) {
+pub async fn net_task(mut runner: embassy_net::Runner<'static, Interface<'static>>) {
     runner.run().await;
 }
 
 pub async fn sleep(millis: u64) {
-    Timer::after(embassy_time::Duration::from_millis(millis)).await;
+    Timer::after(Duration::from_millis(millis)).await;
 }

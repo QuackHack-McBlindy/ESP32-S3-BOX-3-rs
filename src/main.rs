@@ -15,6 +15,7 @@ use embassy_time::{Duration, Timer};
 use embassy_sync::blocking_mutex::CriticalSectionMutex;
 use embassy_sync::mutex::Mutex;
 
+
 use esp_hal::{
     Async,
     main,
@@ -27,7 +28,7 @@ use esp_hal::{
     gpio::{Level, NoPin, Output, OutputConfig, OutputSignal, Input, InputConfig, Pull, Pin, Flex},
     peripherals::{ADC1, I2C0, I2S0, DMA, Peripherals, GPIO2, GPIO15, GPIO16, GPIO17, GPIO45},
     i2c::master::{Config as I2cConfig, I2c},
-    i2s::master::{I2s, I2sRx, I2sTx, Config as I2sConfig, DataFormat, Channels, I2sInterrupt},
+    i2s::master::{I2s, I2sRx, I2sTx, Config as I2sConfig, UnitConfig, DataFormat, Endianness, Channels, I2sInterrupt},
     i2s::master::asynch::I2sWriteDmaTransferAsync,
     i2s::master::asynch::I2sReadDmaTransferAsync,
     spi::master::{Config as SpiConfig, Spi},
@@ -35,8 +36,9 @@ use esp_hal::{
     ledc::timer::TimerIFace,
     ledc::{LSGlobalClkSource, Ledc, LowSpeed},
     ledc::channel::Channel,
+    interrupt::software::SoftwareInterrupt,
     time::{Instant, Rate},
-    timer::timg::TimerGroup,
+    timer::timg::{TimerGroup},
     rng::Rng,
 };
 
@@ -48,9 +50,8 @@ use embedded_hal_bus::spi::ExclusiveDevice;
 use embedded_hal::i2c::I2c as HalI2c;
 
 // WiFi / METWORK
-use esp_radio::wifi::{ClientConfig, ModeConfig, Config as WifiConfig};
+use esp_radio::wifi::{ControllerConfig, Config as WifiConfig, sta::StationConfig, Ssid};
 use embassy_net::{Config as NetConfig, DhcpConfig, Stack, StackResources, Runner, dns::DnsQueryType, tcp::TcpSocket, IpAddress, Ipv4Address};
-
 
 // display
 use display_interface_spi::SPIInterface;
@@ -88,6 +89,7 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
 
 // PSRAM?
 extern crate alloc;
+use esp_alloc::HEAP;
 use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::ToString;
@@ -106,8 +108,7 @@ const FW_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const SAMPLE_RATE: u32 = 16000;
 const SAMPLE_COUNT: usize = 256;
-const BUFFER_SIZE: usize = 4096;
-const DMA_BUFFER_SIZE: usize = 4096;
+const BUFFER_SIZE: usize = 4 * 4092;
 
 pub static MIC_VOLUME: AtomicU8 = AtomicU8::new(72);
 pub static SPEAKER_VOLUME: AtomicU8 = AtomicU8::new(58);
@@ -297,11 +298,14 @@ async fn main(spawner: Spawner) -> ! {
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let mut peripherals = esp_hal::init(config);
 
-    // allocate memory
+    // allocate mem
     esp_alloc::heap_allocator!(#[esp_hal::ram(reclaimed)] size: 73744);
-        
+
+    // setup interupt
+    let sw_ints = esp_hal::interrupt::software::SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
+    let sw_int0 = unsafe { SoftwareInterrupt::steal() }; 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
-    esp_rtos::start(timg0.timer0);
+    esp_rtos::start(timg0.timer0, sw_int0);
     info!("Started ESP32-S3-BOX-3 (version {})", FW_VERSION);
    
 
@@ -318,13 +322,6 @@ async fn main(spawner: Spawner) -> ! {
     let i2c_a_scl = peripherals.GPIO18;
     let i2c_b_sda = peripherals.GPIO41;
     let i2c_b_scl = peripherals.GPIO40;
-
-    let i2s_bclk = peripherals.GPIO17;
-    let i2s_lrclk = peripherals.GPIO45;      
-    let i2s_mclk = peripherals.GPIO2;   
-    let i2s_din = peripherals.GPIO16;
-    let i2s_dout = peripherals.GPIO15;
-
 
     let button_top_left = Input::new(
         peripherals.GPIO0,
@@ -417,10 +414,9 @@ async fn main(spawner: Spawner) -> ! {
             Ok(()) => info!("ES8311 initialised successfully"),
             Err(e) => info!("ES8311 init failed: {:?}", Debug2Format(&e)),
         }
-        let _ = es8311.volume_set(&mut i2c, 50, None);
+        let _ = es8311.volume_set(&mut i2c, 70, None);
         let _ = es8311.mute(&mut i2c, false);
     } // release i2c
-
 
     
     // LEDC / Backlight
@@ -458,7 +454,7 @@ async fn main(spawner: Spawner) -> ! {
     
     // DISPLAY  
     let spi_bus = Spi::new(
-        peripherals.SPI2,   // changed from SPI1
+        peripherals.SPI2,
         SpiConfig::default()
             .with_frequency(Rate::from_mhz(40))
             .with_mode(esp_hal::spi::Mode::_0),
@@ -488,25 +484,23 @@ async fn main(spawner: Spawner) -> ! {
         DISPLAY.borrow_ref_mut(cs).replace(display);
     });
 
-
-    // WIFI Setup    
-    let radio = &*mk_static!(esp_radio::Controller<'static>, esp_radio::init().expect("WiFi - ❌ Failed to initialize controller"));
-    
-    let client_config = ClientConfig::default()
-        .with_ssid(SSID.into())
-        .with_password(PASSWORD.into());
-    let mode_config = ModeConfig::Client(client_config);
-    let radio_config = WifiConfig::default();
-    
+  
+    // WIFI Setup
     let (mut wifi_controller, interfaces) = esp_radio::wifi::new(
-        radio,
         peripherals.WIFI,
-        radio_config,
+        ControllerConfig::default(),
     )
-    .expect("Wi‑Fi - ❌ Failed to initialize Wi-Fi controller");
-        
-    // spawn WiFi task
-    spawner.spawn(base::wifi::connection(wifi_controller)).unwrap();
+    .expect("Wi-Fi - ❌ init failed");
+
+    let station_config = StationConfig::default()
+        .with_ssid(SSID)
+        .with_password(PASSWORD.to_string());
+
+    let wifi_config = WifiConfig::Station(station_config);
+    wifi_controller.set_config(&wifi_config).unwrap();
+    let station = interfaces.station;
+
+    spawn!(spawner, base::wifi::connection(wifi_controller));
     
     // embassy-net setup
     let net_config = NetConfig::dhcpv4(DhcpConfig::default());
@@ -516,14 +510,14 @@ async fn main(spawner: Spawner) -> ! {
     let stack_resources = mk_static!(StackResources<16>, StackResources::<16>::new());
     
     let (stack, runner) = embassy_net::new(
-        interfaces.sta,
+        station,
         net_config,
         stack_resources,
         seed,
     );
     let stack = mk_static!(Stack<'static>, stack);
     
-    spawner.spawn(base::wifi::net_task(runner)).unwrap();
+    spawn!(spawner, base::wifi::net_task(runner));
     
     stack.wait_link_up().await;
     stack.wait_config_up().await;
@@ -539,7 +533,7 @@ async fn main(spawner: Spawner) -> ! {
     CURRENT_IP.store(ip_raw, Ordering::Relaxed);
     info!("IP: {}", ip_addr);
     
-    // resolve backend address    
+    // resolve backend address
     let BACKEND_TCP_PORT: u16 = env!("BACKEND_TCP_PORT").parse().expect("Invalid port");
     let remote_addr = loop {
         match stack.dns_query(BACKEND_TCP_HOST, DnsQueryType::A).await {
@@ -550,87 +544,71 @@ async fn main(spawner: Spawner) -> ! {
             }
         }
     };
+    
      
-
-
     // I2S Audio setup 
     let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(BUFFER_SIZE);
-    
-    let i2s_config = I2sConfig::default()
-        .with_sample_rate(Rate::from_hz(16_000))
-        .with_data_format(DataFormat::Data16Channel16)
-        .with_channels(Channels::STEREO);
-    
-    let mut i2s = I2s::new(
+
+    let i2s = I2s::new(
         peripherals.I2S0,
         peripherals.DMA_CH0,
-        i2s_config,
-    ).unwrap() 
-    .with_mclk(i2s_mclk)
-    .into_async();
+        esp_hal::i2s::master::Config::new_tdm_philips()
+            .with_signal_loopback(true)
+            .with_sample_rate(Rate::from_hz(16000))
+            .with_data_format(esp_hal::i2s::master::DataFormat::Data16Channel16)
+            .with_endianness(esp_hal::i2s::master::Endianness::LittleEndian) 
+            .with_channels(esp_hal::i2s::master::Channels::STEREO),            
+    )
+    .unwrap()
+    .into_async()
+    .with_mclk(peripherals.GPIO2);
 
-    
-    // MODIFY REG BITS
-    let i2s_regs = unsafe { &*esp_hal::peripherals::I2S0::PTR };
-    i2s_regs.tx_conf().modify(|_, w| w.sig_loopback().set_bit());
-    i2s_regs.rx_conf().modify(|_, w| w.rx_slave_mod().set_bit());
-    i2s_regs.tx_conf().modify(|_, w| w.tx_slave_mod().clear_bit());
-
-    // APPLY REG BITS
-    i2s_regs.tx_conf().modify(|_, w| w.tx_update().set_bit());
-    i2s_regs.rx_conf().modify(|_, w| w.rx_update().set_bit());
-    Timer::after(Duration::from_micros(10)).await;
-
-    // VERIFY REG BITS
-    let tx_conf = i2s_regs.tx_conf().read();
-    let rx_conf = i2s_regs.rx_conf().read();
-    info!("TX_CONF: sig_loopback={}, tx_slave_mod={}", 
-          tx_conf.sig_loopback().bit(), tx_conf.tx_slave_mod().bit());
-    info!("RX_CONF: rx_slave_mod={}", rx_conf.rx_slave_mod().bit());
-
-   
-    let i2s_rx = i2s.i2s_rx
-        .with_din(i2s_din)              
-        .build(rx_descriptors);    
-
-    Timer::after(Duration::from_millis(100)).await;
-
-    let i2s_tx = i2s.i2s_tx
-        .with_dout(i2s_dout)         
-        .with_bclk(i2s_bclk)
-        .with_ws(i2s_lrclk)
+    let i2s_tx = i2s
+        .i2s_tx
+        .with_bclk(peripherals.GPIO17)
+        .with_ws(peripherals.GPIO45)
+        .with_dout(peripherals.GPIO15)
         .build(tx_descriptors);
 
-    let i2s_tx: &'static mut _ = Box::leak(Box::new(i2s_tx));
-    Timer::after(Duration::from_millis(100)).await;
-    
+    let i2s_rx = i2s
+        .i2s_rx
+        .with_din(peripherals.GPIO16)
+        .build(rx_descriptors);
+
+    //let i2s_tx: &'static mut _ = Box::leak(Box::new(i2s_tx));
+
+    let tx_transfer = match i2s_tx.write_dma_circular_async(tx_buffer) {
+        Ok(t) => t,
+        Err(e) => {
+            error!("I2S circular TX failed: {:?}", Debug2Format(&e));
+            panic!("I2S setup error");
+        }
+    };
 
   
     // init API routes
     base::api::init_routes().await;
 
     // TASKS
-    let _ = spawner;
 
     // start API on port 80
-    spawner.spawn(tinyapi::web_server_task(stack)).unwrap();
-
+    spawn!(spawner, tinyapi::web_server_task(stack));
     // speaker
-    spawner.spawn(components::speaker::speaker_task(i2s_tx)).unwrap();
-    spawner.spawn(components::speaker::audio_playback_task(stack, BACKEND_TCP_PORT)).unwrap(); 
+    spawn!(spawner, components::speaker::speaker_task(tx_transfer));
+    //spawn!(spawner, components::speaker::stream_speaker(stack, BACKEND_TCP_PORT)); 
     // microphone
-    spawner.spawn(components::microphone::audio_capture_task(i2s_rx, stack, remote_addr)).unwrap();
+    spawn!(spawner, components::stream_mic::audio_capture_task(i2s_rx, stack, remote_addr));
     // sensors
-    spawner.spawn(components::aht20::sensor_task(i2c_b_mutex)).unwrap();
+    spawn!(spawner, components::aht20::sensor_task(i2c_b_mutex));
     // motion
-    spawner.spawn(components::presence::occupancy_task(occupancy)).unwrap();
+    spawn!(spawner, components::presence::occupancy_task(occupancy));
     // buttons
-    spawner.spawn(components::buttons::top_left_button_task(button_top_left)).unwrap();
+    spawn!(spawner, components::buttons::top_left_button_task(button_top_left));
     // display
-    spawner.spawn(display_task()).unwrap();
-    spawner.spawn(backlight_task(backlight_channel)).unwrap();
-    
+    spawn!(spawner, display_task());
+    spawn!(spawner, backlight_task(backlight_channel));
 
+    
     loop { // calculate battery %
         let raw = adc.read_blocking(&mut adc_pin);
         let pin_voltage = raw as f32 * 1100.0 / 4095.0 / 1000.0;
@@ -646,7 +624,7 @@ async fn main(spawner: Spawner) -> ! {
         let rssi = base::wifi::CURRENT_RSSI.load(Ordering::Relaxed);
         RSSI.store(rssi, Ordering::Relaxed);
         let emoji = match percentage {
-            0..=10 => "🪫⚡",
+            0..=10 => "🪫⚠️",
             11..=29 => "🪫",
             30..=70 => "🔋",
             _ => "🔋",

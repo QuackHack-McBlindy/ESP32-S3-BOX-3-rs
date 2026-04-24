@@ -1,3 +1,4 @@
+use esp_hal::Async;
 use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_executor::task;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -5,22 +6,29 @@ use embassy_sync::pipe::Pipe;
 use embassy_time::{Duration, Timer};
 use esp_hal::i2s::master::asynch::I2sWriteDmaTransferAsync;
 use esp_hal::i2s::master::I2sTx;
-use esp_hal::Async;
-use defmt::{info, error};
+use defmt::{info, error, Debug2Format};
 use alloc::vec;
+use alloc::vec::Vec;
+use embassy_futures::select::{select, Either};
 
 const DING_SOUND: &[u8] = include_bytes!("./../../assets/sound/ding_esp.raw");
 const DONE_SOUND: &[u8] = include_bytes!("./../../assets/sound/done_esp.wav");
 const FAIL_SOUND: &[u8] = include_bytes!("./../../assets/sound/fail_esp.wav");
+
+
+const DMA_BUFFER_SIZE: usize = crate::BUFFER_SIZE;
+const STEREO_SAMPLES_PER_WRITE: usize = 256;
+const MONO_SAMPLES_PER_WRITE: usize = STEREO_SAMPLES_PER_WRITE / 2;
+const OWW_MODEL_CHUNK_SIZE: usize = 1280;
+const DMA_SAMPLES: usize = 256;
+const DMA_BUFFER_BYTES: usize = DMA_SAMPLES * 4;
+const PLAYBACK_TCP_RX_BUF_SIZE: usize = 4096;
+const PLAYBACK_TCP_TX_BUF_SIZE: usize = 1024;
 pub const RING_BUFFER_SIZE: usize = 16384;
-const DMA_BUFFER_SIZE: usize = 2048;
 
 static PIPE: Pipe<CriticalSectionRawMutex, RING_BUFFER_SIZE> = Pipe::new();
 
-
-pub fn play(data: &[u8]) -> usize {
-    PIPE.try_write(data).unwrap_or(0)
-}
+pub fn play(data: &[u8]) -> usize { PIPE.try_write(data).unwrap_or(0) }
 
 pub async fn play_sound(sound: &'static [u8]) {
     let mut offset = 0;
@@ -39,26 +47,46 @@ pub async fn play_done() { play_sound(DONE_SOUND).await; }
 pub async fn play_fail() { play_sound(FAIL_SOUND).await; }
 
 #[task]
-pub async fn speaker_task(i2s_tx: &'static mut I2sTx<'static, Async>) -> ! {
-    let mut dma_buffer = [0u8; DMA_BUFFER_SIZE];
+pub async fn speaker_task(
+    mut transfer: I2sWriteDmaTransferAsync<'static, &'static mut [u8; DMA_BUFFER_SIZE]>
+) -> ! {
+    let mut pipe_buf = [0u8; 1024];
+    let silence = [0u8; 256];   // small chunk for zero-filling
 
     loop {
-        let n = PIPE.read(&mut dma_buffer).await;
-        if n > 0 {
-            if let Err(e) = i2s_tx.write_dma_async(&mut dma_buffer[..n]).await {
-                error!("I2S write error: {:?}", e);
+        // Wait until the DMA buffer has free space.
+        let free = transfer.available().await.unwrap();
+        if free == 0 {
+            Timer::after(Duration::from_micros(100)).await;
+            continue;
+        }
+
+        // Calculate how much we can read without borrowing conflicts.
+        let to_read = free.min(pipe_buf.len());
+        let read_future = PIPE.read(&mut pipe_buf[..to_read]);
+        let timeout = Timer::after(Duration::from_millis(2));
+
+        match select(read_future, timeout).await {
+            Either::First(n) if n > 0 => {
+                // Audio data arrived – push it to the I2S stream.
+                let _ = transfer.push(&pipe_buf[..n]).await;
             }
-        } else {
-            Timer::after(Duration::from_millis(10)).await;
+            _ => {
+                // No audio data – fill free space with zeros to keep silence.
+                let mut remaining = free;
+                while remaining > 0 {
+                    let chunk = remaining.min(silence.len());
+                    let _ = transfer.push(&silence[..chunk]).await;
+                    remaining -= chunk;
+                }
+            }
         }
     }
 }
 
-const PLAYBACK_TCP_RX_BUF_SIZE: usize = 4096;
-const PLAYBACK_TCP_TX_BUF_SIZE: usize = 1024;
 
 #[task]
-pub async fn audio_playback_task(
+pub async fn stream_speaker(
     stack: &'static embassy_net::Stack<'static>,
     listen_port: u16,
 ) {
@@ -67,7 +95,7 @@ pub async fn audio_playback_task(
     stack.wait_link_up().await;
     stack.wait_config_up().await;
 
-    info!("📡 ☑️ 🔊 port {}", listen_port);
+    info!("📡 ☑️ 🔊 listen on port {}", listen_port);
 
     loop {
         let mut rx_buffer = [0u8; PLAYBACK_TCP_RX_BUF_SIZE];
@@ -75,7 +103,7 @@ pub async fn audio_playback_task(
         let mut socket = TcpSocket::new(stack.clone(), &mut rx_buffer, &mut tx_buffer);
 
         if let Err(e) = socket.accept(listen_port).await {
-            error!("Accept error: {:?}", e);
+            error!("accept error: {:?}", e);
             Timer::after(Duration::from_secs(1)).await;
             continue;
         }
@@ -153,7 +181,7 @@ pub async fn audio_playback_task(
             }
         }
 
-        info!("Audio client disconnected");
+        info!("audio client disconnected");
         let _ = socket.close();
     }
 }

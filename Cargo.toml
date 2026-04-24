@@ -7,18 +7,18 @@ version = "0.1.6"
 [dependencies]
 #esp32s3 = "0.35.0"
 # ESP Ecosystem
-esp-hal = { version = "~1.0", features = ["defmt", "esp32s3", "unstable", "psram"] }
-esp-rtos = { version = "0.2.0", features = [
+esp-hal = { version = "1.1.0-rc.0", features = ["defmt", "esp32s3", "unstable"] }
+esp-rtos = { version = "0.3.0", features = [
   "defmt",
   "embassy",
   "esp-alloc",
   "esp-radio",
   "esp32s3",
 ] }
-esp-alloc = { version = "0.9.0", features = ["defmt"] } # Mem
+esp-alloc = { version = "0.10.0", features = ["defmt"] } # Mem
 esp-storage  = { version = "0.4.0", features = ["esp32s3"] } 
 # ESP-IDF bootloader
-esp-bootloader-esp-idf = { version = "0.4.0", features = ["defmt", "esp32s3"] }
+esp-bootloader-esp-idf = { version = "0.5.0", features = ["defmt", "esp32s3"] }
 
 
 # Display
@@ -37,19 +37,19 @@ embedded-hal-bus = "0.3.0"
 embedded-storage = "0.3.1"
 
 # Async
-embassy-executor = { version = "0.9.1", features = ["defmt"] }
+embassy-executor = { version = "0.10.0", features = ["defmt"] }
 embassy-time = { version = "0.5.0", features = ["defmt"] }
 embassy-sync = { version = "0.8.0", features = ["defmt"] }
 embassy-futures = "0.1"
 
 # WIFI
-esp-radio = { version = "0.17.0", features = [
+esp-radio = { version = "0.18.0", features = [
   "ble",
   "coex",
   "defmt",
   "esp-alloc",
   "esp32s3",
-  "smoltcp",
+#  "smoltcp",
   "unstable",
   "wifi",
 ] }
@@ -97,6 +97,9 @@ micromath = "2.1.0"
 libm = "0.2"
 nanomp3 = "0.1"
 
+#[patch.crates-io]
+#esp-hal = { git = "https://github.com/esp-rs/esp-hal.git" }
+#embassy-executor-macros = "0.10.0"
 
 [features]
 default = ["use_speaker", "use_mic"]

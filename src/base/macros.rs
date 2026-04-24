@@ -1,7 +1,7 @@
 use critical_section;
 use embassy_sync::blocking_mutex::CriticalSectionMutex;
 use esp_hal::ledc::{LowSpeed, channel::{Channel, ChannelIFace}};
-
+use embassy_executor::Spawner;
 
 #[macro_export]
 macro_rules! mk_static {
@@ -23,6 +23,15 @@ macro_rules! static_mutex {
     }};
 }
 
+#[macro_export]
+macro_rules! spawn {
+    ($spawner:expr, $task:expr) => {{
+        match $task {
+            Ok(token) => $spawner.spawn(token),
+            Err(e) => ::defmt::error!("Failed to spawn task: {:?}", e),
+        }
+    }};
+}
 
 
 #[macro_export]

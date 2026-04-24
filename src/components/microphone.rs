@@ -1,161 +1,85 @@
-use defmt::{info, error};
-use embassy_executor::task;
-use embassy_net::{Stack, tcp::TcpSocket, IpAddress};
-use embassy_time::{Duration, Timer};
-use embassy_futures::select::select;
-use esp_hal::i2s::master::I2sRx;
+use defmt::info;
+use defmt::Debug2Format;
+use esp_hal::i2s::master::{I2sRx, asynch::I2sReadDmaTransferAsync};
 use esp_hal::Async;
-use core::net::SocketAddr;
 use alloc::vec::Vec;
-use alloc::vec;
-use crate::components::speaker;
-use crate::apps::media;
-use crate::components::mic::Microphone;
 
+const STEREO_SAMPLES_PER_READ: usize = 256;
+const MONO_SAMPLES_PER_READ: usize = STEREO_SAMPLES_PER_READ / 2;
 const OWW_MODEL_CHUNK_SIZE: usize = 1280;
-const TCP_RX_BUF_SIZE: usize = 1024;
-const TCP_TX_BUF_SIZE: usize = 4096;
-const ROOM: &str = "esp";
+const DEBUG_MIC: bool = false;
 
-#[task]
-pub async fn audio_capture_task(
+
+pub struct Microphone {
     i2s_rx: I2sRx<'static, Async>,
-    stack: &'static Stack<'static>,
-    remote_addr: SocketAddr,
-) {
-    let remote_endpoint = match remote_addr {
-        SocketAddr::V4(v4) => (IpAddress::Ipv4(v4.ip().octets().into()), v4.port()),
-        SocketAddr::V6(_) => {
-            error!("IPv6 not supported");
-            return;
+    stereo_buffer: [u8; STEREO_SAMPLES_PER_READ * 2],
+    mono_i16: [i16; MONO_SAMPLES_PER_READ],
+    mono_f32: [f32; MONO_SAMPLES_PER_READ],
+    accum_buffer: Vec<f32>,
+    silent: bool,
+}
+
+impl Microphone {
+    pub fn new(i2s_rx: I2sRx<'static, Async>) -> Self {
+        Self {
+            i2s_rx,
+            stereo_buffer: [0u8; STEREO_SAMPLES_PER_READ * 2],
+            mono_i16: [0i16; MONO_SAMPLES_PER_READ],
+            mono_f32: [0f32; MONO_SAMPLES_PER_READ],
+            accum_buffer: Vec::with_capacity(OWW_MODEL_CHUNK_SIZE),
+            silent: false,
         }
-    };
+    }
 
-    stack.wait_link_up().await;
-    stack.wait_config_up().await;
-
-    let mut mic = Microphone::new(i2s_rx);
-    let room_bytes = ROOM.as_bytes();
-    let room_len = room_bytes.len() as u32;
-
-    loop {
-        let mut rx_buffer = [0u8; TCP_RX_BUF_SIZE];
-        let mut tx_buffer = [0u8; TCP_TX_BUF_SIZE];
-        let mut socket = TcpSocket::new(stack.clone(), &mut rx_buffer, &mut tx_buffer);
-        socket.set_timeout(Some(Duration::from_secs(10)));
-
-        if let Err(e) = socket.connect(remote_endpoint).await {
-            error!("❌ connect error: {:?}, retrying in 15s", e);
-            Timer::after(Duration::from_secs(15)).await;
-            continue;
-        }
-        info!("📡 ☑️ 🎙️ to {}", remote_addr);
-
-        // SHAKE HANDS!
-        let mut handshake_ok = true;
-        let len_bytes = room_len.to_le_bytes();
-        let mut written = 0;
-        while written < len_bytes.len() {
-            match socket.write(&len_bytes[written..]).await {
-                Ok(n) => written += n,
+    pub async fn read_chunk(&mut self) -> Result<(Vec<f32>, bool), ()> {
+        while self.accum_buffer.len() < OWW_MODEL_CHUNK_SIZE {
+            match self.i2s_rx.read_dma_async(&mut self.stereo_buffer).await {
+                Ok(()) => {}
                 Err(e) => {
-                    error!("handshake length fail: {:?}", e);
-                    handshake_ok = false;
-                    break;
+                    defmt::error!("I2S read_dma_async failed: {}", Debug2Format(&e));
+                    return Err(());
                 }
             }
-        }
-        if handshake_ok && room_len > 0 {
-            let mut written = 0;
-            while written < room_bytes.len() {
-                match socket.write(&room_bytes[written..]).await {
-                    Ok(n) => written += n,
-                    Err(e) => {
-                        error!("failed to send room name: {:?}", e);
-                        handshake_ok = false;
-                        break;
-                    }
-                }
-            }
-        }
-        if let Err(e) = socket.flush().await {
-            error!("failed to flush handshake: {:?}", e);
-            handshake_ok = false;
-        }
-        if !handshake_ok {
-            let _ = socket.close();
-            Timer::after(Duration::from_secs(15)).await;
-            continue;
-        }
 
-        // STREAM MIC
-        'stream: loop {
-            // get next audio chunk – explicit type annotation fixes inference
-            let (chunk, _silent): (Vec<f32>, bool) = match mic.read_chunk().await {
-                Ok(pair) => pair,
-                Err(e) => {
-                    error!("I2S read error: {:?}", e);
-                    Timer::after(Duration::from_millis(10)).await;
-                    continue;
-                }
+            // DEBUG (detailed)
+            if DEBUG_MIC {
+                let stereo = unsafe {
+                    core::slice::from_raw_parts(
+                        self.stereo_buffer.as_ptr() as *const i16,
+                        STEREO_SAMPLES_PER_READ,
+                    )
+                };
+                info!("[MIC i16]: {:?}", &stereo[..8.min(stereo.len())]);
+            }
+
+            let stereo = unsafe {
+                core::slice::from_raw_parts(
+                    self.stereo_buffer.as_ptr() as *const i16,
+                    STEREO_SAMPLES_PER_READ,
+                )
             };
-
-            // serialise chunk: 4‑byte length + f32 samples as little‑endian bytes
-            let mut chunk_buffer = vec![0u8; 4 + OWW_MODEL_CHUNK_SIZE * 4];
-            chunk_buffer[0..4].copy_from_slice(&(OWW_MODEL_CHUNK_SIZE as u32).to_le_bytes());
-            for (i, &sample) in chunk.iter().enumerate() {
-                let offset = 4 + i * 4;
-                chunk_buffer[offset..offset+4].copy_from_slice(&sample.to_le_bytes());
+            for (i, chunk) in stereo.chunks(2).enumerate() {
+                self.mono_i16[i] = ((chunk[0] as i32 + chunk[1] as i32) / 2) as i16;
             }
-
-            // send
-            let mut written = 0;
-            while written < chunk_buffer.len() {
-                match socket.write(&chunk_buffer[written..]).await {
-                    Ok(n) => written += n,
-                    Err(e) => {
-                        error!("failed to send audio chunk: {:?}", e);
-                        break 'stream;
-                    }
-                }
+            for (i, &s) in self.mono_i16.iter().enumerate() {
+                self.mono_f32[i] = s as f32 / 32768.0;
             }
-            if let Err(e) = socket.flush().await {
-                error!("Failed to flush! {:?}", e);
-                break 'stream;
-            }
-
-            // SERVER RESPONSE ?
-            let mut byte_buf = [0u8; 1];
-            let read_fut = socket.read(&mut byte_buf);
-            let timeout_fut = Timer::after(Duration::from_millis(10));
-            match select(read_fut, timeout_fut).await {
-                embassy_futures::select::Either::First(Ok(1)) => {
-                    match byte_buf[0] {
-                        0x01 => {
-                            // hmm can i mic.drop() here without task exit
-                            media::on_wake_word_detected();
-                            // and create new mic here ?
-                        }
-                        0x03 => {
-                            media::on_command_executed();
-                        }
-                        0x04 => {
-                            media::on_command_failed();
-                        }
-                        _ => info!("Unexpected byte: 0x{:02x}", byte_buf[0]),
-                    }
-                }
-                embassy_futures::select::Either::First(Ok(_)) => {}
-                embassy_futures::select::Either::First(Err(e)) => {
-                    error!("socket read error: {:?}", e);
-                    break 'stream;
-                }
-                embassy_futures::select::Either::Second(_) => {}
-            }
+            self.accum_buffer.extend_from_slice(&self.mono_f32[..MONO_SAMPLES_PER_READ]);
         }
 
-        info!("❌ reconnecting...");
-        let _ = socket.close();
-        Timer::after(Duration::from_secs(15)).await;
+        let chunk: Vec<f32> = self.accum_buffer.drain(..OWW_MODEL_CHUNK_SIZE).collect();
+
+        // silence detection
+        let all_zero = chunk.iter().all(|&s| s == 0.0);
+        if all_zero {
+            if !self.silent {
+                info!("🎙️⚠️ Mic zero zero zero!");
+                self.silent = true;
+            }
+        } else if self.silent {
+            info!("🎙️✅ Mic OK!");
+            self.silent = false;
+        }
+        Ok((chunk, all_zero))
     }
 }
