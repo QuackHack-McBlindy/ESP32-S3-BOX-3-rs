@@ -1,3 +1,6 @@
+// COMPONENTS/SPEAKER
+// PROVIDES A SPEAKER AND SOME SIMPLE SOUNDS STORED AS BYTES
+// ++ TCP SERVER TASK THAT RECEIEVES AUDIO DATA AND PLAYS IT ON SPEAKER  
 use esp_hal::Async;
 use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_executor::task;
@@ -11,6 +14,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use embassy_futures::select::{select, Either};
 
+// SOUND FILES
 const DING_SOUND: &[u8] = include_bytes!("./../../assets/sound/ding_esp.raw");
 const DONE_SOUND: &[u8] = include_bytes!("./../../assets/sound/done_esp.wav");
 const FAIL_SOUND: &[u8] = include_bytes!("./../../assets/sound/fail_esp.wav");
@@ -26,10 +30,13 @@ const PLAYBACK_TCP_RX_BUF_SIZE: usize = 4096;
 const PLAYBACK_TCP_TX_BUF_SIZE: usize = 1024;
 pub const RING_BUFFER_SIZE: usize = 16384;
 
+// A PIPE TO PUSH AUDIO DATA THROUGH
 static PIPE: Pipe<CriticalSectionRawMutex, RING_BUFFER_SIZE> = Pipe::new();
 
+// FUNCTION TO WRITE DATA INTO PIPE
 pub fn play(data: &[u8]) -> usize { PIPE.try_write(data).unwrap_or(0) }
 
+// FUNCTION TO PLAY A STORED SOUND
 pub async fn play_sound(sound: &'static [u8]) {
     let mut offset = 0;
     while offset < sound.len() {
@@ -42,37 +49,43 @@ pub async fn play_sound(sound: &'static [u8]) {
     }
 }
 
+// FUNCTION TO PLAY DING SOUND
 pub async fn play_ding() { play_sound(DING_SOUND).await; }
+// FUNCTION TO PLAY DONE SOUND
 pub async fn play_done() { play_sound(DONE_SOUND).await; }
+// FUNCTION TO PLAY FAIL SOUND
 pub async fn play_fail() { play_sound(FAIL_SOUND).await; }
 
+
+// TASK THAT RUNS SPEAKER
 #[task]
 pub async fn speaker_task(
     mut transfer: I2sWriteDmaTransferAsync<'static, &'static mut [u8; DMA_BUFFER_SIZE]>
 ) -> ! {
     let mut pipe_buf = [0u8; 1024];
-    let silence = [0u8; 256];   // small chunk for zero-filling
+    // SMALL CHUNK FOR FILLING WITH ZERO'S
+    let silence = [0u8; 256];
 
     loop {
-        // Wait until the DMA buffer has free space.
+        // WAIT TIL DMA BUFFER HAS FREE SPACE
         let free = transfer.available().await.unwrap();
         if free == 0 {
             Timer::after(Duration::from_micros(100)).await;
             continue;
         }
 
-        // Calculate how much we can read without borrowing conflicts.
+        // CALCULATE HOW MUCH WE CAN READ WITHOUT BORROW CONFLICTS
         let to_read = free.min(pipe_buf.len());
         let read_future = PIPE.read(&mut pipe_buf[..to_read]);
         let timeout = Timer::after(Duration::from_millis(2));
 
         match select(read_future, timeout).await {
             Either::First(n) if n > 0 => {
-                // Audio data arrived – push it to the I2S stream.
+                // AUDIO DATA ARRIVED – PUSH TO I2S
                 let _ = transfer.push(&pipe_buf[..n]).await;
             }
             _ => {
-                // No audio data – fill free space with zeros to keep silence.
+                // NO DATA – FILL FREE SPACE WITH ZERO'S TO KEEP CLOCKS UP
                 let mut remaining = free;
                 while remaining > 0 {
                     let chunk = remaining.min(silence.len());
@@ -85,6 +98,7 @@ pub async fn speaker_task(
 }
 
 
+// TCP SERVER TASK TO STREAM AUDIO DATA TO SPEAKER 
 #[task]
 pub async fn stream_speaker(
     stack: &'static embassy_net::Stack<'static>,
@@ -112,7 +126,7 @@ pub async fn stream_speaker(
         socket.set_timeout(Some(Duration::from_secs(10)));
 
         'stream: loop {
-            // read 4-byte prefix (little-endian u32)
+            // READ 4-BYTE PREFIX (LITTLE-ENDIAN u32)
             let mut len_buf = [0u8; 4];
             let mut read = 0;
             while read < 4 {
@@ -123,7 +137,7 @@ pub async fn stream_speaker(
                     }
                     Ok(n) => read += n,
                     Err(e) => {
-                        error!("Read error: {:?}", e);
+                        error!("read ERROR: {:?}", e);
                         break 'stream;
                     }
                 }
@@ -140,29 +154,31 @@ pub async fn stream_speaker(
             while read < f32_buf.len() {
                 match socket.read(&mut f32_buf[read..]).await {
                     Ok(0) => {
-                        error!("Connection closed mid-chunk");
+                        error!("connection closed mid-chunk");
                         break 'stream;
                     }
                     Ok(n) => read += n,
                     Err(e) => {
-                        error!("Read error: {:?}", e);
+                        error!("read ERROR: {:?}", e);
                         break 'stream;
                     }
                 }
             }
 
-            // convert f32 > i16 > raw bytes - push to ring buffer
+            // CONVERT f32 > i16 > RAW BYTES - PUSH TO RING BUFFER
             let samples_f32: &[f32] = unsafe {
                 core::slice::from_raw_parts(
                     f32_buf.as_ptr() as *const f32,
                     sample_count,
                 )
             };
+            
             let mut pcm_i16 = [0i16; 1024];
             for (i, &f) in samples_f32.iter().enumerate() {
                 let clamped = f.clamp(-1.0, 1.0);
                 pcm_i16[i] = (clamped * 32767.0) as i16;
             }
+            
             let pcm_bytes = unsafe {
                 core::slice::from_raw_parts(
                     pcm_i16.as_ptr() as *const u8,
@@ -170,6 +186,7 @@ pub async fn stream_speaker(
                 )
             };
 
+            // PUSH TO SPEAKER
             let mut written = 0;
             while written < pcm_bytes.len() {
                 let n = crate::components::speaker::play(&pcm_bytes[written..]);

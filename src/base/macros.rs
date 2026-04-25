@@ -1,7 +1,98 @@
+// BASE/MACROS
+// SIMPLE HELPERS
 use critical_section;
 use embassy_sync::blocking_mutex::CriticalSectionMutex;
 use esp_hal::ledc::{LowSpeed, channel::{Channel, ChannelIFace}};
 use embassy_executor::Spawner;
+
+// INIT ATOMIC VARIABLES
+
+// INIT_BOOL
+// USAGE:
+// init_bool!(MIC_MUTED, false);
+#[macro_export]
+macro_rules! init_bool {
+    ($name:ident, $val:expr) => {
+        pub static $name: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new($val);
+    };
+}
+
+// INIT_u8
+// USAGE:
+// init_u8!(MIC_VOLUME, 72);
+#[macro_export]
+macro_rules! init_u8 {
+    ($name:ident, $val:expr) => {
+        pub static $name: core::sync::atomic::AtomicU8 = core::sync::atomic::AtomicU8::new($val);
+    };
+}
+
+// INIT_U32
+// USAGE:
+// init_u32!(BATTERY_VOLTAGE, 0);
+#[macro_export]
+macro_rules! init_u32 {
+    ($name:ident, $val:expr) => {
+        pub static $name: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new($val);
+    };
+}
+
+// INIT_I8
+// USAGE:
+// init_i8!(SOME_SIGNED_VALUE, -10);
+#[macro_export]
+macro_rules! init_i8 {
+    ($name:ident, $val:expr) => {
+        pub static $name: core::sync::atomic::AtomicI8 = core::sync::atomic::AtomicI8::new($val);
+    };
+}
+
+// INIT_I32
+// USAGE:
+// init_i32!(RSSI, 0);
+#[macro_export]
+macro_rules! init_i32 {
+    ($name:ident, $val:expr) => {
+        pub static $name: core::sync::atomic::AtomicI32 = core::sync::atomic::AtomicI32::new($val);
+    };
+}
+
+// STORE ATOMIC VARIABLES
+// USAGE:
+// store!(PRESENCE, current);
+// store!(TEMPERATURE, temp as u8);
+#[macro_export]
+macro_rules! store {
+    ($var:expr, $value:expr) => {
+        $var.store($value, core::sync::atomic::Ordering::Relaxed)
+    };
+}
+
+// LOAD ATOMIC VARIABLES
+// USAGE:
+// info!("{}", load!(TEMPERATURE));
+#[macro_export]
+macro_rules! load {
+    ($var:expr) => {
+        $var.load(core::sync::atomic::Ordering::Relaxed)
+    };
+}
+
+
+// TASK SPAWNER
+// USAGE: 
+// spawn!(spawner, task_name());
+#[macro_export]
+macro_rules! spawn {
+    ($spawner:expr, $task:expr) => {{
+        match $task {
+            Ok(token) => $spawner.spawn(token),
+            Err(e) => ::defmt::error!("Failed to spawn task: {:?}", e),
+        }
+    }};
+}
+
+
 
 #[macro_export]
 macro_rules! mk_static {
@@ -20,16 +111,6 @@ macro_rules! static_mutex {
         let value = $value;
         let mutex = Box::leak(Box::new(<$mutex_type>::new(value)));
         mutex
-    }};
-}
-
-#[macro_export]
-macro_rules! spawn {
-    ($spawner:expr, $task:expr) => {{
-        match $task {
-            Ok(token) => $spawner.spawn(token),
-            Err(e) => ::defmt::error!("Failed to spawn task: {:?}", e),
-        }
     }};
 }
 

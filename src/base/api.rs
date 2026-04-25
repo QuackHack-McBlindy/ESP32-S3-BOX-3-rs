@@ -1,25 +1,31 @@
+// BASE/API
+// CONFIGURES `GET` ENDPOINTS VIA `tinyapi`
+// FOR CONTROLLING/CONFIGURING THE DEVICE EXTERNALLY
+// ++ SERVE WEBSERVER AT `http://0.0.0.0:80`
+// EXAMPLE USAGE: (SET DISPLAY BRIGHTNESS TO `70%` USING `curl`) 
+// `curl 192.168.1.11:80/api/settings/display/brightness/70`
 use tinyapi::{log, register_route, Request, Response};
 use defmt::info;
 use alloc::format;
-use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
-use embassy_net::Ipv4Address;
 use alloc::string::String;
+use alloc::vec;
+use esp_hal::time::Instant;
+use embassy_net::Ipv4Address;
+
 use crate::apps::media;
 use crate::components::aht20::HUMIDITY;
 use crate::components::aht20::TEMPERATURE;
 use crate::components::presence::PRESENCE;
+use crate::apps::media::{PLAYER, PLAYLIST, PlaybackState};
 use crate::{BATTERY_PERCENT, BATTERY_VOLTAGE, RSSI, CURRENT_IP, MIC_VOLUME, SPEAKER_VOLUME, MIC_MUTED, SPEAKER_MUTED, BACKLIGHT_PERCENT, FW_VERSION};
+use crate::{init_bool, init_u8, init_u32, init_i8, init_i32, store, load};
 
-pub static POWER_STATE: AtomicBool = AtomicBool::new(true);
-pub static DISPLAY_STATE: AtomicBool = AtomicBool::new(true);
+// INIT ATOMIC DEFAULT VALUES
+init_bool!(POWER_STATE, true);
+init_bool!(DISPLAY_STATE, true);
+init_bool!(MIC_ACTIVE, true);
+init_bool!(pause_flag, true);
 
-
-
-
-use media::{PLAYER, PLAYLIST, PlaybackState};
-use alloc::vec;
-
-use esp_hal::time::Instant;
 
 fn api_list_handler(_req: Request<'_>) -> Response {
     let endpoints = vec![
@@ -35,29 +41,42 @@ fn index_handler(_req: Request<'_>) -> Response {
     Response::html(include_str!("./../../assets/index.html"))
 }
 
+fn favicon_handler(_req: Request<'_>) -> Response {
+    //Response::file(include_bytes!("./../assets/favicon.ico"));
+    Response::not_found()    
+}
+
+fn js_handler(_req: Request<'_>) -> Response {
+    Response::script(include_str!("./../../assets/script.js"))
+}
+
+fn ota_handler(_req: Request<'_>) -> Response {
+    info!("OTA update requested");
+    Response::text("update started")
+}
+
 pub fn brightness_handler(req: Request<'_>) -> Response {
     let value = req.param("value").unwrap_or("?");
     info!("Setting brightness to {}", value);
     if let Ok(percent) = value.parse::<u8>() {
         let percent = percent.clamp(0, 80);
-        BACKLIGHT_PERCENT.store(percent, Ordering::Relaxed);
+        store!(BACKLIGHT_PERCENT, percent);
     }
     let msg = format!("Brightness set to {}", value);
     Response::text(&msg)
 }
 
-
 fn power_state_handler(req: Request<'_>) -> Response {
     let value = req.param("value").unwrap_or("toggle");
     match value {
-        "on" => POWER_STATE.store(true, Ordering::Relaxed),
-        "off" => POWER_STATE.store(false, Ordering::Relaxed),
+        "on" => store!(POWER_STATE, true),
+        "off" => store!(POWER_STATE, false),
         _ => {
-            let new = !POWER_STATE.load(Ordering::Relaxed);
-            POWER_STATE.store(new, Ordering::Relaxed);
+            let new = !load!(POWER_STATE);
+            store!(POWER_STATE, new);
         }
     }
-    let state = POWER_STATE.load(Ordering::Relaxed);
+    let state = load!(POWER_STATE);
     info!("Power state -> {}", if state { "ON" } else { "OFF" });
     Response::text(if state { "ON" } else { "OFF" })
 }
@@ -65,14 +84,14 @@ fn power_state_handler(req: Request<'_>) -> Response {
 fn display_state_handler(req: Request<'_>) -> Response {
     let value = req.param("value").unwrap_or("toggle");
     match value {
-        "on" => DISPLAY_STATE.store(true, Ordering::Relaxed),
-        "off" => DISPLAY_STATE.store(false, Ordering::Relaxed),
+        "on" => store!(DISPLAY_STATE, true),
+        "off" => store!(DISPLAY_STATE, false),
         _ => {
-            let new = !DISPLAY_STATE.load(Ordering::Relaxed);
-            DISPLAY_STATE.store(new, Ordering::Relaxed);
+            let new = !load!(DISPLAY_STATE);
+            store!(DISPLAY_STATE, new);
         }
     }
-    let state = DISPLAY_STATE.load(Ordering::Relaxed);
+    let state = load!(DISPLAY_STATE);
     info!("Display state -> {}", if state { "ON" } else { "OFF" });
     Response::text(if state { "ON" } else { "OFF" })
 }
@@ -81,7 +100,7 @@ fn mic_volume_handler(req: Request<'_>) -> Response {
     let value = req.param("value").unwrap_or("?");
     if let Ok(vol) = value.parse::<u8>() {
         let vol = vol.clamp(0, 100);
-        MIC_VOLUME.store(vol, Ordering::Relaxed);
+        store!(MIC_VOLUME, vol);
         info!("Mic volume set to {}%", vol);
     }
     Response::text(&format!("Mic volume {}", value))
@@ -90,18 +109,18 @@ fn mic_volume_handler(req: Request<'_>) -> Response {
 fn mic_mute_handler(req: Request<'_>) -> Response {
     let value = req.param("value").unwrap_or("toggle");
     match value {
-        "1" | "on" | "mute" => MIC_MUTED.store(true, Ordering::Relaxed),
-        "0" | "off" | "unmute" => MIC_MUTED.store(false, Ordering::Relaxed),
+        "1" | "on" | "mute" => store!(MIC_MUTED, true),
+        "0" | "off" | "unmute" => store!(MIC_MUTED, false),
         _ => {
-            let new = !MIC_MUTED.load(Ordering::Relaxed);
-            MIC_MUTED.store(new, Ordering::Relaxed);
+            let new = !load!(MIC_MUTED);
+            store!(MIC_MUTED, new);
         }
     }
-    let muted = MIC_MUTED.load(Ordering::Relaxed);
+    let muted = load!(MIC_MUTED);
     if muted {
-        MIC_VOLUME.store(0, Ordering::Relaxed);
+        store!(MIC_VOLUME, 0);
     } else {
-        MIC_VOLUME.store(72, Ordering::Relaxed);
+        store!(MIC_VOLUME, 72);
     }
     info!("Mic muted: {}", muted);
     Response::text(if muted { "muted" } else { "unmuted" })
@@ -111,7 +130,7 @@ fn speaker_volume_handler(req: Request<'_>) -> Response {
     let value = req.param("value").unwrap_or("?");
     if let Ok(vol) = value.parse::<u8>() {
         let vol = vol.clamp(0, 100);
-        SPEAKER_VOLUME.store(vol, Ordering::Relaxed);
+        store!(SPEAKER_VOLUME, vol);
         info!("Speaker volume set to {}%", vol);
     }
     Response::text(&format!("Speaker volume {}", value))
@@ -120,56 +139,21 @@ fn speaker_volume_handler(req: Request<'_>) -> Response {
 fn speaker_mute_handler(req: Request<'_>) -> Response {
     let value = req.param("value").unwrap_or("toggle");
     match value {
-        "1" | "on" | "mute" => SPEAKER_MUTED.store(true, Ordering::Relaxed),
-        "0" | "off" | "unmute" => SPEAKER_MUTED.store(false, Ordering::Relaxed),
+        "1" | "on" | "mute" => store!(SPEAKER_MUTED, true),
+        "0" | "off" | "unmute" => store!(SPEAKER_MUTED, false),
         _ => {
-            let new = !SPEAKER_MUTED.load(Ordering::Relaxed);
-            SPEAKER_MUTED.store(new, Ordering::Relaxed);
+            let new = !load!(SPEAKER_MUTED);
+            store!(SPEAKER_MUTED, new);
         }
     }
-    let muted = SPEAKER_MUTED.load(Ordering::Relaxed);
+    let muted = load!(SPEAKER_MUTED);
     if muted {
-        SPEAKER_VOLUME.store(0, Ordering::Relaxed);
+        store!(SPEAKER_VOLUME, 0);
     } else {
-        SPEAKER_VOLUME.store(58, Ordering::Relaxed);
+        store!(SPEAKER_VOLUME, 58);
     }
     info!("Speaker muted: {}", muted);
     Response::text(if muted { "muted" } else { "unmuted" })
-}
-
-fn detected_handler(req: Request<'_>) -> Response {
-    let value = "70";
-    info!("Setting brightness to {}", value);
-    if let Ok(percent) = value.parse::<u8>() {
-        let percent = percent.clamp(0, 80);
-        BACKLIGHT_PERCENT.store(percent, Ordering::Relaxed);
-    }
-    Response::text("OK")
-}
-
-fn voice_win_handler(req: Request<'_>) -> Response {
-    let value = "0";
- let ip_raw = CURRENT_IP.load(Ordering::Relaxed);   info!("Setting brightness to {}", value);
-    if let Ok(percent) = value.parse::<u8>() {
-        let percent = percent.clamp(0, 80);
-        BACKLIGHT_PERCENT.store(percent, Ordering::Relaxed);
-    }
-    Response::text("OK")    
-}
-
-fn voice_fail_handler(req: Request<'_>) -> Response {
-    let value = "0";
-    info!("Setting brightness to {}", value);
-    if let Ok(percent) = value.parse::<u8>() {
-        let percent = percent.clamp(0, 80);
-        BACKLIGHT_PERCENT.store(percent, Ordering::Relaxed);
-    }
-    Response::text("OK")
-}
-
-fn ota_handler(_req: Request<'_>) -> Response {
-    info!("OTA update requested");
-    Response::text("update started")
 }
 
 fn media_handler(req: Request<'_>) -> Response {
@@ -179,24 +163,22 @@ fn media_handler(req: Request<'_>) -> Response {
     Response::text(status)
 }
 
-
-
 fn sensor_fetcher(req: Request<'_>) -> Response {
     let sensor_name = req.param("value").unwrap_or("unknown");
     info!("Sensor fetch requested: {}", sensor_name);
 
-    let battery_percent = BATTERY_PERCENT.load(Ordering::Relaxed);
-    let battery_voltage = BATTERY_VOLTAGE.load(Ordering::Relaxed);
-    let rssi = RSSI.load(Ordering::Relaxed);
-    let mic_vol = MIC_VOLUME.load(Ordering::Relaxed);
-    let spk_vol = SPEAKER_VOLUME.load(Ordering::Relaxed);
-    let mic_muted = MIC_MUTED.load(Ordering::Relaxed);
-    let spk_muted = SPEAKER_MUTED.load(Ordering::Relaxed);
-    let temp = TEMPERATURE.load(Ordering::Relaxed);
-    let hum = HUMIDITY.load(Ordering::Relaxed);
-    let presence = PRESENCE.load(Ordering::Relaxed);
-    let brightness = BACKLIGHT_PERCENT.load(Ordering::Relaxed);
-    let ip_raw = CURRENT_IP.load(Ordering::Relaxed);
+    let battery_percent = load!(BATTERY_PERCENT);
+    let battery_voltage = load!(BATTERY_VOLTAGE);
+    let rssi = load!(RSSI);
+    let mic_vol = load!(MIC_VOLUME);
+    let spk_vol = load!(SPEAKER_VOLUME);
+    let mic_muted = load!(MIC_MUTED);
+    let spk_muted = load!(SPEAKER_MUTED);
+    let temp = load!(TEMPERATURE);
+    let hum = load!(HUMIDITY);
+    let presence = load!(PRESENCE);
+    let brightness = load!(BACKLIGHT_PERCENT);
+    let ip_raw = load!(CURRENT_IP);
     let ip = Ipv4Address::from(ip_raw);
     // let uptime
     let version = FW_VERSION;
@@ -224,29 +206,16 @@ fn sensor_fetcher(req: Request<'_>) -> Response {
     Response::text(&response_str)
 }
 
-fn favicon_handler(_req: Request<'_>) -> Response {
-    //Response::file(include_bytes!("./../assets/favicon.ico"));
-    Response::not_found()    
-}
-
-pub static MIC_ACTIVE: AtomicBool = AtomicBool::new(true);
-pub static pause_flag: AtomicBool = AtomicBool::new(true);
-
-
-fn js_handler(_req: Request<'_>) -> Response {
-    Response::script(include_str!("./../../assets/script.js"))
-}
-
 fn voice_state_handler(req: Request<'_>) -> Response {
     let value = req.param("value").unwrap_or("toggle");
     match value {
         "start" => {
             info!("Voice recording started");
-            MIC_ACTIVE.store(true, Ordering::Release);
+            store!(MIC_ACTIVE, true);
         }
         "stop" => {
             info!("Voice recording stopped");
-            MIC_ACTIVE.store(false, Ordering::Release);
+            store!(MIC_ACTIVE, false);
         }
         _ => {
             info!("Invalid voice state: {}", value);
@@ -256,8 +225,9 @@ fn voice_state_handler(req: Request<'_>) -> Response {
     Response::text("ok")
 }
 
+// FUNCTION TO INIT EDPOINTS
 pub async fn init_routes() {
-    // Serve the web frontend
+    // SERVE THE WEB FRONTEND
     register_route("/", index_handler).await;
     register_route("/favicon.ico", favicon_handler).await;
     register_route("/script.js", js_handler).await;
@@ -271,16 +241,11 @@ pub async fn init_routes() {
     register_route("/api/settings/mic/mute/{value}", mic_mute_handler).await;
     register_route("/api/settings/speaker/volume/{value}", speaker_volume_handler).await;
     register_route("/api/settings/speaker/mute/{value}", speaker_mute_handler).await;
-    register_route("/api/settings/voice/state/{value}", voice_state_handler).await;
-
-    // VOICE
-    register_route("/api/voice/detected", detected_handler).await;
-    register_route("/api/voice/executed", voice_win_handler).await;
-    register_route("/api/voice/failed", voice_fail_handler).await;        
-
+    register_route("/api/settings/voice/state/{value}", voice_state_handler).await;     
     register_route("/api/media/{action}", media_handler).await;
+    
     // DATA ENDPOINTS
-    // handles all sensor values currently on the ESP32-S3-BOX-3
+    // HANDLE ALL SENSOR VALUES ON `ESP32-S3-BOX-3`
     register_route("/api", api_list_handler).await;
     register_route("/api/sensor/{value}", sensor_fetcher).await;
 

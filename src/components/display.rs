@@ -1,3 +1,4 @@
+// COMPONENTS/DISPLAY
 use defmt::info;
 use alloc::format;
 use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
@@ -9,8 +10,8 @@ pub fn brightness_set(value: &str) {
     if let Ok(percent) = value.parse::<u8>() {
         let percent = percent.clamp(0, 80);
         BACKLIGHT_PERCENT.store(percent, Ordering::Relaxed);
-        info!("Brightness set to {}", percent);
+        info!("🔆 {}%", percent);
     } else {
-        info!("Invalid brightness value");
+        info!("invalid brightness value!");
     }
 }

@@ -85,6 +85,7 @@ static_cell = "2.1.1"
 defmt = "1.0.1"
 esp-println = { version = "0.16.1", features = ["defmt-espflash", "esp32s3"] }
 heapless = "0.8"
+lite-json = { version = "0.2.0", default-features = false, defaults = ["no_std"] }
 
 # HTTP API
 barely-fuzzy = { path = "./vendor/barely-fuzzy", default-features = false, features = ["alloc"] }
@@ -96,10 +97,6 @@ reqwless = { version = "0.5", default-features = false }
 micromath = "2.1.0"
 libm = "0.2"
 nanomp3 = "0.1"
-
-#[patch.crates-io]
-#esp-hal = { git = "https://github.com/esp-rs/esp-hal.git" }
-#embassy-executor-macros = "0.10.0"
 
 [features]
 default = ["use_speaker", "use_mic"]

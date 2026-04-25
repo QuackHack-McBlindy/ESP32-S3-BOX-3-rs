@@ -1,10 +1,14 @@
+// ESP32-S3-BOX-3-rs https://github.com/QuackHack-McBlindy/ESP32-S3-BOX-3-rs
+// BARE METAL NO STD 
 #![no_std]
 #![no_main]
+// NOBODY TELLS ME WHAT TO DO!
 #![allow(warnings)]
 #![allow(non_snake_case)]
 #![deny(clippy::mem_forget)]
 #![deny(clippy::large_stack_frames)]
 
+// IMPORTS
 use alloc::vec;
 use esp_println as _;
 use defmt::{info, Debug2Format, error};
@@ -15,7 +19,7 @@ use embassy_time::{Duration, Timer};
 use embassy_sync::blocking_mutex::CriticalSectionMutex;
 use embassy_sync::mutex::Mutex;
 
-
+// HARDWARE ABSTRACTION LAYER IMPORTS
 use esp_hal::{
     Async,
     main,
@@ -42,18 +46,18 @@ use esp_hal::{
     rng::Rng,
 };
 
-// i2C/SPI bus sharing
+// I2C/SPI BUS SHARING IMPORTS
 use core::cell::RefCell;
 use critical_section::Mutex as CsMutex;
 use embedded_hal_bus::i2c::CriticalSectionDevice;
 use embedded_hal_bus::spi::ExclusiveDevice;
 use embedded_hal::i2c::I2c as HalI2c;
 
-// WiFi / METWORK
+// WIFI / METWORK IMPORTS
 use esp_radio::wifi::{ControllerConfig, Config as WifiConfig, sta::StationConfig, Ssid};
 use embassy_net::{Config as NetConfig, DhcpConfig, Stack, StackResources, Runner, dns::DnsQueryType, tcp::TcpSocket, IpAddress, Ipv4Address};
 
-// display
+// DISPLAY IMPORTS
 use display_interface_spi::SPIInterface;
 use ili9341::{DisplaySize240x320, Ili9341, Orientation};
 use embedded_graphics::{
@@ -81,20 +85,20 @@ mod components;
 mod base;
 mod apps;
 
-
+// PANIC HANDLER
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
-// PSRAM?
+// MEMORY
 extern crate alloc;
 use esp_alloc::HEAP;
 use alloc::boxed::Box;
 use alloc::format;
 use alloc::string::ToString;
 
-// bootloader
+// BOOTLOADER (REQUIRED TO BOOT WITHOUT ESP-IDF)
 esp_bootloader_esp_idf::esp_app_desc!(
   
 );
@@ -105,36 +109,37 @@ const PASSWORD: &str = env!("WIFI_PASSWORD");
 const BACKEND_TCP_HOST: &str = env!("BACKEND_TCP_HOST");
 const FW_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-
 const SAMPLE_RATE: u32 = 16000;
 const SAMPLE_COUNT: usize = 256;
 const BUFFER_SIZE: usize = 4 * 4092;
 
-pub static MIC_VOLUME: AtomicU8 = AtomicU8::new(72);
-pub static SPEAKER_VOLUME: AtomicU8 = AtomicU8::new(58);
-pub static MIC_MUTED: AtomicBool = AtomicBool::new(false);
-pub static SPEAKER_MUTED: AtomicBool = AtomicBool::new(false);
-pub static BATTERY_VOLTAGE: AtomicU32 = AtomicU32::new(0);
-pub static BATTERY_PERCENT: AtomicU8 = AtomicU8::new(100);
-pub static RSSI: AtomicI32 = AtomicI32::new(0);
-pub static CURRENT_IP: AtomicU32 = AtomicU32::new(0);
+// INIT ATOMIC DEFAULTS 
+init_bool!(MIC_MUTED, false);
+init_bool!(SPEAKER_MUTED, false);
+init_u8!(MIC_VOLUME, 72);
+init_u8!(SPEAKER_VOLUME, 58);
+init_u8!(BACKLIGHT_PERCENT, 0);
+init_u8!(BATTERY_PERCENT, 100);
+init_u32!(BATTERY_VOLTAGE, 0);
+init_u32!(CURRENT_IP, 0);
+init_i32!(RSSI, 0);
+
 pub static ES7210: CsMutex<RefCell<Option<components::es7210::Es7210>>> = CsMutex::new(RefCell::new(None));
 pub static ES8311: CsMutex<RefCell<Option<components::es8311::Es8311>>> = CsMutex::new(RefCell::new(None));
 pub static DISPLAY: CsMutex<RefCell<Option<DisplayType>>> = CsMutex::new(RefCell::new(None));
-pub static BACKLIGHT_PERCENT: AtomicU8 = AtomicU8::new(0);
 pub static I2C_BUS: CsMutex<RefCell<Option<I2cBus>>> = CsMutex::new(RefCell::new(None));
 pub type I2cBus = I2c<'static, Blocking>;
 
 
+// MONITOR AND CONTROL DISPLAY BRIGHTNESS
 #[embassy_executor::task]
 async fn backlight_task(mut channel: &'static mut Channel<'static, LowSpeed>) {
     loop {
-        let percent = BACKLIGHT_PERCENT.load(Ordering::Relaxed);
+        let percent = load!(BACKLIGHT_PERCENT);
         channel.set_duty(percent).unwrap();
         Timer::after(Duration::from_millis(100)).await;
     }
 }
-
 
 fn mic_volume_percent_to_db(percent: u8) -> i8 {
     let clamped = percent.clamp(0, 100) as i32;
@@ -146,18 +151,19 @@ fn speaker_volume_percent(percent: u8) -> u8 {
     percent.clamp(0, 100)
 }
 
+// MONITOR AND EXECUTE AUDIO SETTINGS CHANGES
 #[embassy_executor::task]
 pub async fn audio_settings_task(i2c_bus: &'static CsMutex<RefCell<I2cBus>>) {
-    let mut last_mic_vol = MIC_VOLUME.load(Ordering::Relaxed);
-    let mut last_spk_vol = SPEAKER_VOLUME.load(Ordering::Relaxed);
-    let mut last_mic_muted = MIC_MUTED.load(Ordering::Relaxed);
-    let mut last_spk_muted = SPEAKER_MUTED.load(Ordering::Relaxed);
+    let mut last_mic_vol = load!(MIC_VOLUME);
+    let mut last_spk_vol = load!(SPEAKER_VOLUME);
+    let mut last_mic_muted = load!(MIC_MUTED);
+    let mut last_spk_muted = load!(SPEAKER_MUTED);
 
     loop {
-        let mic_vol = MIC_VOLUME.load(Ordering::Relaxed);
-        let spk_vol = SPEAKER_VOLUME.load(Ordering::Relaxed);
-        let mic_muted = MIC_MUTED.load(Ordering::Relaxed);
-        let spk_muted = SPEAKER_MUTED.load(Ordering::Relaxed);
+        let mic_vol = load!(MIC_VOLUME);
+        let spk_vol = load!(SPEAKER_VOLUME);
+        let mic_muted = load!(MIC_MUTED);
+        let spk_muted = load!(SPEAKER_MUTED);
 
         let mic_changed = mic_vol != last_mic_vol || mic_muted != last_mic_muted;
         let spk_changed = spk_vol != last_spk_vol || spk_muted != last_spk_muted;
@@ -230,9 +236,9 @@ async fn display_task() {
     let mut last_rssi = 0;
 
     loop {
-        let battery = BATTERY_PERCENT.load(Ordering::Relaxed);
-        let ip_raw = CURRENT_IP.load(Ordering::Relaxed);
-        let rssi = RSSI.load(Ordering::Relaxed);
+        let battery = load!(BATTERY_PERCENT);
+        let ip_raw = load!(CURRENT_IP);
+        let rssi = load!(RSSI);
 
         let ip_str = if ip_raw == 0 {
             "IP: none".to_string()
@@ -242,12 +248,12 @@ async fn display_task() {
         };
 
         if battery != last_battery || ip_raw != last_ip || rssi != last_rssi {
-            // redraw when something changes
+            // RE-DRAW WHEN SOMETHING CHANGES
             critical_section::with(|cs| {
                 if let Some(display) = DISPLAY.borrow_ref_mut(cs).as_mut() {
-                    // clear (black)
+                    // CLEAR SCREEN (BLACK)
                     display.clear(Rgb565::BLACK).unwrap();
-                    // draw battery
+                    // DRAW BATTERY
                     let battery_text = format!("🔋 {}%", battery);
                     Text::with_alignment(
                         &battery_text,
@@ -258,7 +264,7 @@ async fn display_task() {
                     .draw(display)
                     .unwrap();
 
-                    // draw IP
+                    // DRAW IP
                     Text::with_alignment(
                         &ip_str,
                         Point::new(120, 50),
@@ -268,7 +274,7 @@ async fn display_task() {
                     .draw(display)
                     .unwrap();
 
-                    // draw RSSI
+                    // DRAW RSSI
                     let rssi_text = format!("📶 {} dBm", rssi);
                     Text::with_alignment(
                         &rssi_text,
@@ -298,10 +304,10 @@ async fn main(spawner: Spawner) -> ! {
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let mut peripherals = esp_hal::init(config);
 
-    // allocate mem
+    // ALLOCATE MEMORY
     esp_alloc::heap_allocator!(#[esp_hal::ram(reclaimed)] size: 73744);
 
-    // setup interupt
+    // SOFTWARE INTERUPT SETUP
     let sw_ints = esp_hal::interrupt::software::SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
     let sw_int0 = unsafe { SoftwareInterrupt::steal() }; 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
@@ -328,6 +334,7 @@ async fn main(spawner: Spawner) -> ! {
         InputConfig::default().with_pull(Pull::Up)
     );
 
+    // ENABLE POWER AMPLIFIER
     // pa_enable.set_low() to mute
     let mut pa_enable = Output::new(
         peripherals.GPIO46,
@@ -340,7 +347,7 @@ async fn main(spawner: Spawner) -> ! {
         InputConfig::default().with_pull(Pull::Down)
     );
 
-    // ADC / Battery
+    // ADC / BATTERY
     let mut adc_config = AdcConfig::new();
     let battery_pin = peripherals.GPIO10;
     let mut adc_pin = adc_config.enable_pin(battery_pin, Attenuation::_0dB);
@@ -369,7 +376,7 @@ async fn main(spawner: Spawner) -> ! {
     let i2c_a_mutex = Box::leak(Box::new(CsMutex::new(RefCell::new(i2c_a))));
     let i2c_b_mutex = Box::leak(Box::new(CsMutex::new(RefCell::new(i2c_b))));
 
-    // Audio codecs
+    // AUDIO CODEC CONFIGURATION
     let es7210 = components::es7210::Es7210::new(0x40);
     let es8311 = components::es8311::Es8311::new(0x18);
 
@@ -416,14 +423,14 @@ async fn main(spawner: Spawner) -> ! {
         }
         let _ = es8311.volume_set(&mut i2c, 70, None);
         let _ = es8311.mute(&mut i2c, false);
-    } // release i2c
+    } // RELEASE I2C
 
     
-    // LEDC / Backlight
+    // LEDC / BACKLIGHT
     let mut ledc = mk_static!(Ledc, Ledc::new(peripherals.LEDC));
     ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
     
-    // low speed timer (Timer0) for 24 kHz with 10‑bit duty resolution
+    // LOW SPEED TIMER FOR 24 kHz WITH 10‑BIT DUTY RESOLUTION
     let lstimer0 = mk_static!(
         esp_hal::ledc::timer::Timer<'static, LowSpeed>,
         ledc.timer::<LowSpeed>(esp_hal::ledc::timer::Number::Timer0)
@@ -436,7 +443,7 @@ async fn main(spawner: Spawner) -> ! {
         })
         .unwrap();
     
-    // create a channel and assign it to the timer and GPIO 47
+    // CREATE A CHANNEL AND ASSIGN IT TO THE TIMER AND GPIO 47
     let mut channel0 = ledc.channel(
         esp_hal::ledc::channel::Number::Channel0,
         backlight,
@@ -449,7 +456,7 @@ async fn main(spawner: Spawner) -> ! {
         })
         .unwrap();
     
-    // leak the channel to get static mut
+    // LEAK THE CHANNEL TO GET STATIC MUT
     let backlight_channel: &'static mut _ = Box::leak(Box::new(channel0)); 
     
     // DISPLAY  
@@ -485,7 +492,7 @@ async fn main(spawner: Spawner) -> ! {
     });
 
   
-    // WIFI Setup
+    // WIFI SETUP
     let (mut wifi_controller, interfaces) = esp_radio::wifi::new(
         peripherals.WIFI,
         ControllerConfig::default(),
@@ -502,7 +509,7 @@ async fn main(spawner: Spawner) -> ! {
 
     spawn!(spawner, base::wifi::connection(wifi_controller));
     
-    // embassy-net setup
+    // EMBASSY-NET SETUP
     let net_config = NetConfig::dhcpv4(DhcpConfig::default());
     let rng = Rng::new();
     let seed = (u64::from(rng.random())) << 32 | u64::from(rng.random());
@@ -530,10 +537,10 @@ async fn main(spawner: Spawner) -> ! {
     };
     let ip_addr = ip.address();
     let ip_raw = u32::from(ip_addr);
-    CURRENT_IP.store(ip_raw, Ordering::Relaxed);
+    store!(CURRENT_IP, ip_raw);
     info!("IP: {}", ip_addr);
     
-    // resolve backend address
+    // RESOLVE BACKEND ADDRESS
     let BACKEND_TCP_PORT: u16 = env!("BACKEND_TCP_PORT").parse().expect("Invalid port");
     let remote_addr = loop {
         match stack.dns_query(BACKEND_TCP_HOST, DnsQueryType::A).await {
@@ -546,7 +553,7 @@ async fn main(spawner: Spawner) -> ! {
     };
     
      
-    // I2S Audio setup 
+    // I2S AUDIO SETUP 
     let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(BUFFER_SIZE);
 
     let i2s = I2s::new(
@@ -563,20 +570,23 @@ async fn main(spawner: Spawner) -> ! {
     .into_async()
     .with_mclk(peripherals.GPIO2);
 
-    let i2s_tx = i2s
-        .i2s_tx
+    // AUDIO OUTPUT
+    // BUILD I2S TX (MASTER) WITH BCLK, LRCLK AND DIGITAL OUT PINS 
+    let i2s_tx = i2s.i2s_tx
         .with_bclk(peripherals.GPIO17)
         .with_ws(peripherals.GPIO45)
         .with_dout(peripherals.GPIO15)
         .build(tx_descriptors);
 
+    // AUDIO INPUT
+    // BUILD I2S RX (SLAVE) WITH DIGITAL-IN PIN 
     let i2s_rx = i2s
         .i2s_rx
         .with_din(peripherals.GPIO16)
         .build(rx_descriptors);
 
-    //let i2s_tx: &'static mut _ = Box::leak(Box::new(i2s_tx));
-
+    // I2S TX CIRCULAR WRITE
+    // CONTINUOSLY WRITE TO I2S TX TO KEEP CLOCKS UP FOR RX (SLAVE)
     let tx_transfer = match i2s_tx.write_dma_circular_async(tx_buffer) {
         Ok(t) => t,
         Err(e) => {
@@ -586,52 +596,65 @@ async fn main(spawner: Spawner) -> ! {
     };
 
   
-    // init API routes
+    // INIT API ROUTES
     base::api::init_routes().await;
 
     // TASKS
 
-    // start API on port 80
+    // WEB SERVER TASK PORT 80
     spawn!(spawner, tinyapi::web_server_task(stack));
-    // speaker
+    // SPEAKER TASK
     spawn!(spawner, components::speaker::speaker_task(tx_transfer));
-    //spawn!(spawner, components::speaker::stream_speaker(stack, BACKEND_TCP_PORT)); 
-    // microphone
+    // SPEAKER SERVER TASK (STREAM AUDIO TO THE SPEAKER OVER TCP PORT 12345)
+    spawn!(spawner, components::speaker::stream_speaker(stack, BACKEND_TCP_PORT)); 
+    // MICROPHONE TASK (STREAM AUDIO TO SERVER OVER TCP PORT 12345)
     spawn!(spawner, components::stream_mic::audio_capture_task(i2s_rx, stack, remote_addr));
-    // sensors
+    // AUDIO SETTINGS TASK
+    //spawn!(spawner, audio_settings_task());
+    // SENSOR TASK (TEMPERATURE/HUMIDITY)
     spawn!(spawner, components::aht20::sensor_task(i2c_b_mutex));
-    // motion
+    // PRESENCE SENSOR TASK
     spawn!(spawner, components::presence::occupancy_task(occupancy));
-    // buttons
-    spawn!(spawner, components::buttons::top_left_button_task(button_top_left));
-    // display
+    // BUTTON MONITOR TASK (TOP-LEFT BUTTON)
+    spawn!(spawner, components::buttons::button_task(button_top_left));
+    // DISPLAY TASK
     spawn!(spawner, display_task());
     spawn!(spawner, backlight_task(backlight_channel));
 
     
-    loop { // calculate battery %
+    loop { // CALCULATE BATTERY PERCENTAGE
+        let full_battery = 1968 as u32;
+        let empty_battery = 1600 as u32;
         let raw = adc.read_blocking(&mut adc_pin);
         let pin_voltage = raw as f32 * 1100.0 / 4095.0 / 1000.0;
         let battery_voltage = pin_voltage * 4.11;
-        let percentage = ((battery_voltage - 3.0) / (4.2 - 3.0) * 100.0)
+        let percentage = ((battery_voltage - 2.7) / (4.2 - 2.7) * 100.0)
             .clamp(0.0, 100.0) as u8;
+        let charging = battery_voltage > 4.1; // (?)
 
-        // store as millivolts (u32) no go float
+        // STORE AS MILLIVOLTS (u32) NO GO FLOAT
         let voltage_mv = (battery_voltage * 1000.0) as u32;
-        BATTERY_VOLTAGE.store(voltage_mv, Ordering::Relaxed);
-        BATTERY_PERCENT.store(percentage, Ordering::Relaxed);
+        store!(BATTERY_VOLTAGE, voltage_mv);
+        store!(BATTERY_PERCENT, percentage);
 
-        let rssi = base::wifi::CURRENT_RSSI.load(Ordering::Relaxed);
-        RSSI.store(rssi, Ordering::Relaxed);
-        let emoji = match percentage {
-            0..=10 => "🪫⚠️",
-            11..=29 => "🪫",
-            30..=70 => "🔋",
-            _ => "🔋",
-        };
+        // WIFI SIGNAL STRENGTH
+        let rssi = load!(base::wifi::CURRENT_RSSI);
+        store!(RSSI, rssi);
+
+        // PRINT
+        let emoji = match (percentage, charging) {
+            (0..=10, false) => "🪫⚠️",
+            (0..=10, true)  => "🪫⚡",
+            (11..=29, false) => "🪫",
+            (11..=29, true)  => "🪫⚡",
+            (30..=70, false) => "🔋",
+            (30..=70, true)  => "🔋⚡",
+            (_, false)       => "🔋",
+            (_, true)        => "🔋⚡",
+        };        
         info!("{} {}%,  ({} mV)", emoji, percentage, voltage_mv);
         info!("🛜 {} dBm", rssi);
-    
+        // EVERY 60 SECONDS
         Timer::after(Duration::from_secs(60)).await;
     }
 }

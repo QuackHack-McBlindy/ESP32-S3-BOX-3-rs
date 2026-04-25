@@ -1,14 +1,18 @@
+// BASE/WIFI
+// BASIC WIFI CONFIGURATION
+// ++ EMBASSY-NET RUNNER
 use core::sync::atomic::{AtomicI32, Ordering};
 use embassy_futures::select::{select, Either};
 use embassy_time::{Timer, Duration};
 use esp_radio::wifi::sta::StationConfig;
 use esp_radio::wifi::{Config, PowerSaveMode, WifiController, Interface};
 use defmt::info;
-use crate::SSID;
-use crate::PASSWORD;
-pub static CURRENT_RSSI: AtomicI32 = AtomicI32::new(0);
+
 use crate::alloc::string::ToString;
 
+pub static CURRENT_RSSI: AtomicI32 = AtomicI32::new(0);
+
+// WIFI CONNECTION TASK
 #[embassy_executor::task]
 pub async fn connection(mut controller: WifiController<'static>) {
     let station_config = esp_radio::wifi::sta::StationConfig::default()
@@ -19,9 +23,9 @@ pub async fn connection(mut controller: WifiController<'static>) {
 
     controller.set_config(&wifi_config).unwrap();
 
-    // enable power saving
+    // ENABLE POWER SAVING
     if let Err(e) = controller.set_power_saving(PowerSaveMode::Maximum) {
-        info!("Failed to set power saving: {:?}", e);
+        info!("failed to set power saving: {:?}", e);
     }
 
     loop {
@@ -32,9 +36,10 @@ pub async fn connection(mut controller: WifiController<'static>) {
                     conn_info.channel
                 );
 
+                // LOOP TO UPDATE & STORE RSSI ATOMIC
                 loop {
                     if let Ok(rssi) = controller.rssi() {
-                        CURRENT_RSSI.store(rssi, Ordering::Relaxed);
+                        CURRENT_RSSI.store(rssi, core::sync::atomic::Ordering::Relaxed);
                     }
 
                     match select(
@@ -46,15 +51,15 @@ pub async fn connection(mut controller: WifiController<'static>) {
                         Either::First(result) => {
                             match result {
                                 Ok(info) => info!(
-                                    "WiFi - ❌ disconnected, reason: {:?}",
+                                    "WiFi - ❌ disconnected! reason: {:?}",
                                     info.reason
                                 ),
-                                Err(e) => info!("WiFi - ❌ disconnect error: {:?}", e),
+                                Err(e) => info!("WiFi - ❌ disconnect ERROR: {:?}", e),
                             }
-                            break; // exit inner loop to reconnect
+                            break; // EXIT INNER LOOP TO RECONNECT
                         }
                         Either::Second(()) => {
-                            // timeout – loop again
+                            // TIMEOUT – LOOP AGAIN
                         }
                     }
                 }
@@ -67,11 +72,13 @@ pub async fn connection(mut controller: WifiController<'static>) {
     }
 }
 
+// EMBASSY-NET RUNNER
 #[embassy_executor::task]
 pub async fn net_task(mut runner: embassy_net::Runner<'static, Interface<'static>>) {
     runner.run().await;
 }
 
+// PUB SLEEP FUNCTION
 pub async fn sleep(millis: u64) {
     Timer::after(Duration::from_millis(millis)).await;
 }
