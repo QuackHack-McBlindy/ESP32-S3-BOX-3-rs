@@ -26,7 +26,7 @@ init_bool!(DISPLAY_STATE, true);
 init_bool!(MIC_ACTIVE, true);
 init_bool!(pause_flag, true);
 
-
+// GET /API - RETURN LIST OF ENDPOINTS 
 fn api_list_handler(_req: Request<'_>) -> Response {
     let endpoints = vec![
         "/",
@@ -37,24 +37,29 @@ fn api_list_handler(_req: Request<'_>) -> Response {
     Response::text(&endpoints.join("\n"))
 }
 
+// GET /INDEX.HTML - SERVES WEB FRONTEND 
 fn index_handler(_req: Request<'_>) -> Response {
     Response::html(include_str!("./../../assets/index.html"))
 }
 
+// GET /FAVICON.ICO - SERVES FRONTEND FAVICON
 fn favicon_handler(_req: Request<'_>) -> Response {
     //Response::file(include_bytes!("./../assets/favicon.ico"));
     Response::not_found()    
 }
 
+// GET /SCRIPT.JS - SERVES FRONTEND JAVASCRIPT
 fn js_handler(_req: Request<'_>) -> Response {
     Response::script(include_str!("./../../assets/script.js"))
 }
 
+// GET /OTA - OVER THE AIR UPDATES 
 fn ota_handler(_req: Request<'_>) -> Response {
     info!("OTA update requested");
     Response::text("update started")
 }
 
+// GET /API/SETTINGS/DISPLAY/BRIGHTNESS/{val}
 pub fn brightness_handler(req: Request<'_>) -> Response {
     let value = req.param("value").unwrap_or("?");
     info!("Setting brightness to {}", value);
@@ -66,6 +71,7 @@ pub fn brightness_handler(req: Request<'_>) -> Response {
     Response::text(&msg)
 }
 
+// GET /API/SETTINGS
 fn power_state_handler(req: Request<'_>) -> Response {
     let value = req.param("value").unwrap_or("toggle");
     match value {
@@ -81,6 +87,7 @@ fn power_state_handler(req: Request<'_>) -> Response {
     Response::text(if state { "ON" } else { "OFF" })
 }
 
+// GET /API/SETTINGS/DISPLAY
 fn display_state_handler(req: Request<'_>) -> Response {
     let value = req.param("value").unwrap_or("toggle");
     match value {
@@ -96,6 +103,7 @@ fn display_state_handler(req: Request<'_>) -> Response {
     Response::text(if state { "ON" } else { "OFF" })
 }
 
+// GET /API/SETTINGS/MIC/VOLUME/{val}
 fn mic_volume_handler(req: Request<'_>) -> Response {
     let value = req.param("value").unwrap_or("?");
     if let Ok(vol) = value.parse::<u8>() {
@@ -163,6 +171,7 @@ fn media_handler(req: Request<'_>) -> Response {
     Response::text(status)
 }
 
+// GET /API/SENSOR/{val}
 fn sensor_fetcher(req: Request<'_>) -> Response {
     let sensor_name = req.param("value").unwrap_or("unknown");
     info!("Sensor fetch requested: {}", sensor_name);

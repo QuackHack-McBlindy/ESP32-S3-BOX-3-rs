@@ -13,13 +13,25 @@ use esp_hal::Async;
 use core::net::SocketAddr;
 use alloc::vec::Vec;
 use alloc::vec;
-
+use crate::{init_bool, init_u8, init_u32, init_i8, init_i32, store, load};
 
 const OWW_MODEL_CHUNK_SIZE: usize = 1280;
 const TCP_RX_BUF_SIZE: usize = 1024;
 const TCP_TX_BUF_SIZE: usize = 4096;
 const ROOM: &str = "esp";
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+#[repr(u8)]
+pub enum ASSISTANT_PHASE {
+    Disabled = 0,
+    Listening = 1,
+    Detected  = 2,
+    Thinking  = 3,
+    Executed  = 4,
+    Failed    = 5,
+}
+
+init_u8!(ASSISTANT_PHASE, 0);
 
 // MICROPHONE STREAMING TASK
 #[task]
@@ -96,7 +108,9 @@ pub async fn audio_capture_task(
         }
 
         // STREAM MIC LOOP
-        'stream: loop {
+        'stream: loop { 
+            // SET `LISTENING` PHASE
+            store!(ASSISTANT_PHASE, 1);
             // GET NEXT AUDIO CHUNK
             let (chunk, _silent): (Vec<f32>, bool) = match mic.read_chunk().await {
                 Ok(pair) => pair,
@@ -140,24 +154,47 @@ pub async fn audio_capture_task(
                     match byte_buf[0] {
                         0x01 => { // 0x01 == WAKE WORD DETECTED
                             info!("💥 DETECTED Wake Word!");
+                            // SET `DETECTED` PHASE
+                            store!(ASSISTANT_PHASE, 2);
                             // PLAY DING SOUND
                             crate::components::speaker::play_ding().await;
                             // AND TURN ON DISPLAY
                             crate::components::display::brightness_set("70");
+                        } // 0x02 == SERVER STARTED TRANSCRIPTION
+                        0x02 => {
+                            info!("🧠 THINKING...");
+                            // SET `THINKING` PHASE
+                            store!(ASSISTANT_PHASE, 3);
+                            // FLASH DISPLAY
+                            crate::components::display::brightness_set("0");
+                            Timer::after(Duration::from_millis(50)).await;
+                            crate::components::display::brightness_set("80");
+                            Timer::after(Duration::from_millis(50)).await;
+                            crate::components::display::brightness_set("0");
+                            Timer::after(Duration::from_millis(50)).await;
+                            crate::components::display::brightness_set("70");              
                         } // 0x03 == VOICE COMMAND EXECUTED SUCCESSFULLY
                         0x03 => {
                             info!("✅ Executed command!");
+                            // SET `EXECUTED` PHASE
+                            store!(ASSISTANT_PHASE, 4);
                             // PLAY DONE SOUND
                             crate::components::speaker::play_done().await;
                             // AND TURN OFF DISPLAY
                             crate::components::display::brightness_set("0");
+                            // BACK TO `LISTENING` PHASE
+                            store!(ASSISTANT_PHASE, 1);
                         } // 0x04 == FAILED VOICE COMMAND EXECUTION
                         0x04 => {
                             info!("💩 FAILED execution!");
+                            // SET `FAILED` PHASE
+                            store!(ASSISTANT_PHASE, 5);
                             // PLAY DUCK SAY `OH FUCK` SOUND
                             crate::components::speaker::play_fail().await;
                             // AND TURN OFF DISPLAY
                             crate::components::display::brightness_set("0");
+                            // BACK TO `LISTENING` PHASE
+                            store!(ASSISTANT_PHASE, 1);
                         } // UNEXPECTED RESPONSE
                         _ => info!("Unexpected byte: 0x{:02x}", byte_buf[0]),
                     }

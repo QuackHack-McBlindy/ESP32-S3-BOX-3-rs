@@ -622,18 +622,23 @@ async fn main(spawner: Spawner) -> ! {
     spawn!(spawner, backlight_task(backlight_channel));
 
     
-    loop { // CALCULATE BATTERY PERCENTAGE
-        let full_battery = 1968 as u32;
-        let empty_battery = 1600 as u32;
+    loop { // CALIBRATE BATTERY READ WITH PREDEFINED MIN/MAX mV VALUES
+        let empty_battery = 3200 as u32;
+        let full_battery = 3700 as u32;
+        let empty_battery_charging = 4200 as u32;
+        let full_battery_charging = 4521 as u32;
+        // CALCULATE BATTERY PERCENTAGE        
         let raw = adc.read_blocking(&mut adc_pin);
         let pin_voltage = raw as f32 * 1100.0 / 4095.0 / 1000.0;
         let battery_voltage = pin_voltage * 4.11;
-        let percentage = ((battery_voltage - 2.7) / (4.2 - 2.7) * 100.0)
-            .clamp(0.0, 100.0) as u8;
-        let charging = battery_voltage > 4.1; // (?)
-
-        // STORE AS MILLIVOLTS (u32) NO GO FLOAT
         let voltage_mv = (battery_voltage * 1000.0) as u32;
+        let raw_pct = (voltage_mv as i32 - empty_battery as i32) * 100
+              / (full_battery as i32 - empty_battery as i32);
+        let percentage = raw_pct.clamp(0, 100) as u8;
+        // CHARGING STATE CHECK
+        let charging = battery_voltage > 4.2; // (?)
+
+        // STORE AS MILLIVOLTS (u32) NO GO FLOAT     
         store!(BATTERY_VOLTAGE, voltage_mv);
         store!(BATTERY_PERCENT, percentage);
 
@@ -652,7 +657,7 @@ async fn main(spawner: Spawner) -> ! {
             (_, false)       => "🔋",
             (_, true)        => "🔋⚡",
         };        
-        info!("{} {}%,  ({} mV)", emoji, percentage, voltage_mv);
+        info!("{} {}% ({} mV)", emoji, percentage, voltage_mv);
         info!("🛜 {} dBm", rssi);
         // EVERY 60 SECONDS
         Timer::after(Duration::from_secs(60)).await;

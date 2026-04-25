@@ -12,6 +12,7 @@ use crate::SPEAKER_VOLUME;
 pub enum VoiceAssistantPhase {
     Listening,
     Detected,
+    Thinking,
     Executed,
     Failed,
 }

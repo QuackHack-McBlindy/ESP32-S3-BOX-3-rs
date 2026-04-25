@@ -36,6 +36,9 @@ static PIPE: Pipe<CriticalSectionRawMutex, RING_BUFFER_SIZE> = Pipe::new();
 // FUNCTION TO WRITE DATA INTO PIPE
 pub fn play(data: &[u8]) -> usize { PIPE.try_write(data).unwrap_or(0) }
 
+
+
+
 // FUNCTION TO PLAY A STORED SOUND
 pub async fn play_sound(sound: &'static [u8]) {
     let mut offset = 0;
@@ -173,16 +176,20 @@ pub async fn stream_speaker(
                 )
             };
             
-            let mut pcm_i16 = [0i16; 1024];
-            for (i, &f) in samples_f32.iter().enumerate() {
-                let clamped = f.clamp(-1.0, 1.0);
-                pcm_i16[i] = (clamped * 32767.0) as i16;
-            }
+            assert!(sample_count % 2 == 0, "stereo data must have even number of floats");
             
+            let mut pcm_i16 = [0i16; 2048];
+            let num_pairs = sample_count / 2;
+            for i in 0..num_pairs {
+                let left = (samples_f32[2*i].clamp(-1.0, 1.0) * 32767.0) as i16;
+                let right = (samples_f32[2*i+1].clamp(-1.0, 1.0) * 32767.0) as i16;
+                pcm_i16[2*i] = left;
+                pcm_i16[2*i+1] = right;
+            }
             let pcm_bytes = unsafe {
                 core::slice::from_raw_parts(
                     pcm_i16.as_ptr() as *const u8,
-                    sample_count * 2,
+                    num_pairs * 4,
                 )
             };
 
