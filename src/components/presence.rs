@@ -4,7 +4,7 @@ use embassy_executor::task;
 use embassy_time::{Duration, Timer};
 use esp_hal::gpio::Input;
 use defmt::debug;
-use crate::{init_bool, init_u8, init_u32, init_i8, init_i32, store, load};
+use crate::{init_bool, store};
 
 init_bool!(PRESENCE, false);
 

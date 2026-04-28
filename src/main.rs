@@ -10,42 +10,29 @@
 #![deny(clippy::large_stack_frames)]
 
 // IMPORTS
-use alloc::vec;
 use esp_println as _;
 use defmt::{info, Debug2Format, error};
-use core::sync::atomic::{AtomicU8, AtomicI8, AtomicU32, AtomicI32, AtomicBool, Ordering};
-use core::net::SocketAddr;
-use core::future::Future;
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
-use embassy_sync::blocking_mutex::CriticalSectionMutex;
-use embassy_sync::mutex::Mutex;
 
 // HARDWARE ABSTRACTION LAYER IMPORTS
 use esp_hal::{
-    Async,
-    main,
     Blocking,
     dma_buffers,
-    dma::{DmaRxBuf, DmaDescriptor},
     analog::adc::{Adc, AdcConfig, Attenuation},
     clock::CpuClock,
     delay::Delay,
-    gpio::{Level, NoPin, Output, OutputConfig, OutputSignal, Input, InputConfig, Pull, Pin, Flex},
-    peripherals::{ADC1, I2C0, I2S0, DMA, Peripherals, GPIO2, GPIO15, GPIO16, GPIO17, GPIO45},
+    gpio::{Level, NoPin, Output, OutputConfig, Input, InputConfig, Pull},
     i2c::master::{Config as I2cConfig, I2c},
-    i2s::master::{I2s, I2sRx, I2sTx, Config as I2sConfig, UnitConfig, DataFormat, Endianness, Channels, I2sInterrupt},
-    i2s::master::asynch::I2sWriteDmaTransferAsync,
-    i2s::master::asynch::I2sReadDmaTransferAsync,
+    i2s::master::I2s,
     spi::master::{Config as SpiConfig, Spi},
     ledc::channel::ChannelIFace,
     ledc::timer::TimerIFace,
     ledc::{LSGlobalClkSource, Ledc, LowSpeed},
     ledc::channel::Channel,
     interrupt::software::SoftwareInterrupt,
-    time::{Instant, Rate},
+    time::Rate,
     timer::timg::{TimerGroup},
-    rng::Rng,
 };
 
 // I2C/SPI BUS SHARING IMPORTS
@@ -56,23 +43,10 @@ use embedded_hal_bus::spi::ExclusiveDevice;
 use embedded_hal::i2c::I2c as HalI2c;
 
 // WIFI / METWORK IMPORTS
-use esp_radio::wifi::{ControllerConfig, Config as WifiConfig, sta::StationConfig, Ssid};
-use embassy_net::{Config as NetConfig, DhcpConfig, Stack, StackResources, Runner, dns::DnsQueryType, tcp::TcpSocket, IpAddress, Ipv4Address};
 
 // DISPLAY IMPORTS
 use display_interface_spi::SPIInterface;
 use ili9341::{DisplaySize240x320, Ili9341, Orientation};
-use embedded_graphics::{
-    draw_target::DrawTarget,
-    geometry::{Dimensions, Point},
-    mono_font::{
-        iso_8859_1::FONT_8X13,
-        MonoTextStyle, MonoTextStyleBuilder,
-    },
-    pixelcolor::{Rgb565, RgbColor},
-    text::{Alignment, Text},
-    Drawable,
-};
 
 type DisplayType = Ili9341<
     SPIInterface<
@@ -86,7 +60,6 @@ type DisplayType = Ili9341<
 
 // YO-ESP == ESP32 -> I2S <- YO (BACKEND)
 //      MICROPHONE ->BIDIR<- SPEAKER                      
-use yo_esp::{audio_capture_task, speaker_task, stream_speaker, CommandHandler, play_ding, play_done, play_fail};
 
 struct VoiceHandler;
 
@@ -116,7 +89,7 @@ impl yo_esp::CommandHandler for VoiceHandler {
     }
 
     // 0x03 == COMMAND EXECUTED
-    fn on_executed(&mut self, ms: Option<u64>) -> core::pin::Pin<alloc::boxed::Box<dyn core::future::Future<Output = ()> + '_>> {
+    fn on_executed(&mut self, _ms: Option<u64>) -> core::pin::Pin<alloc::boxed::Box<dyn core::future::Future<Output = ()> + '_>> {
         Box::pin(async move {       
             // PLAY DONE SOUND
             yo_esp::play_done().await;
@@ -126,7 +99,7 @@ impl yo_esp::CommandHandler for VoiceHandler {
     }
 
     // 0x04 == FAILED COMMAND EXECUTION
-    fn on_failed(&mut self, ms: Option<u64>) -> core::pin::Pin<alloc::boxed::Box<dyn core::future::Future<Output = ()> + '_>> {
+    fn on_failed(&mut self, _ms: Option<u64>) -> core::pin::Pin<alloc::boxed::Box<dyn core::future::Future<Output = ()> + '_>> {
         Box::pin(async move {         
             // PLAY DUCK SAY `OH FUCK` SOUND
             yo_esp::play_fail().await;
@@ -149,10 +122,7 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
 
 // MEMORY
 extern crate alloc;
-use esp_alloc::HEAP;
 use alloc::boxed::Box;
-use alloc::format;
-use alloc::string::ToString;
 
 // BOOTLOADER (REQUIRED TO BOOT WITHOUT ESP-IDF)
 esp_bootloader_esp_idf::esp_app_desc!();
@@ -188,7 +158,7 @@ pub type I2cBus = I2c<'static, Blocking>;
 
 // MONITOR AND CONTROL DISPLAY BRIGHTNESS
 #[embassy_executor::task]
-async fn backlight_task(mut channel: &'static mut Channel<'static, LowSpeed>) {
+async fn backlight_task(channel: &'static mut Channel<'static, LowSpeed>) {
     loop {
         let percent = load!(BACKLIGHT_PERCENT);
         channel.set_duty(percent).unwrap();
@@ -281,13 +251,13 @@ pub async fn audio_settings_task(i2c_bus: &'static CsMutex<RefCell<I2cBus>>) {
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
-    let mut peripherals = esp_hal::init(config);
+    let peripherals = esp_hal::init(config);
 
     // ALLOCATE MEMORY
     esp_alloc::heap_allocator!(#[esp_hal::ram(reclaimed)] size: 73744);
 
     // SOFTWARE INTERUPT SETUP
-    let sw_ints = esp_hal::interrupt::software::SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
+    let _sw_ints = esp_hal::interrupt::software::SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
     let sw_int0 = unsafe { SoftwareInterrupt::steal() }; 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     esp_rtos::start(timg0.timer0, sw_int0);
@@ -296,7 +266,7 @@ async fn main(spawner: Spawner) -> ! {
 
     // GPIO PINS
     let backlight = peripherals.GPIO47;
-    let touch_int = peripherals.GPIO3;
+    let _touch_int = peripherals.GPIO3;
 
     let button_top_left = Input::new(
         peripherals.GPIO0,
@@ -305,13 +275,13 @@ async fn main(spawner: Spawner) -> ! {
 
     // ENABLE POWER AMPLIFIER
     // pa_enable.set_low() to mute
-    let mut pa_enable = Output::new(
+    let _pa_enable = Output::new(
         peripherals.GPIO46,
         Level::High,
         OutputConfig::default()
     );
     
-    let mut occupancy = Input::new(
+    let occupancy = Input::new(
         peripherals.GPIO21,
         InputConfig::default().with_pull(Pull::Down)
     );
@@ -323,7 +293,7 @@ async fn main(spawner: Spawner) -> ! {
     let mut adc = Adc::new(peripherals.ADC1, adc_config);
 
     // I2C BUS A
-    let mut i2c_a = I2c::new(
+    let i2c_a = I2c::new(
         peripherals.I2C0,
         I2cConfig::default().with_frequency(Rate::from_khz(100)),
     )
@@ -332,7 +302,7 @@ async fn main(spawner: Spawner) -> ! {
     .with_scl(peripherals.GPIO18);    
 
     // I2C BUS B
-    let mut i2c_b = I2c::new(
+    let i2c_b = I2c::new(
         peripherals.I2C1,
         I2cConfig::default().with_frequency(Rate::from_khz(50)),
     )
@@ -397,7 +367,7 @@ async fn main(spawner: Spawner) -> ! {
 
     
     // LEDC / BACKLIGHT
-    let mut ledc = mk_static!(Ledc, Ledc::new(peripherals.LEDC));
+    let ledc = mk_static!(Ledc, Ledc::new(peripherals.LEDC));
     ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
     
     // LOW SPEED TIMER FOR 24 kHz WITH 10‑BIT DUTY RESOLUTION
@@ -467,7 +437,7 @@ async fn main(spawner: Spawner) -> ! {
     let (stack, remote_addr) = base::wifi::init(&spawner, peripherals.WIFI, backend_port).await;
 
     // I2S AUDIO SETUP 
-    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(BUFFER_SIZE);
+    let (_rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(BUFFER_SIZE);
 
     let i2s = I2s::new(
         peripherals.I2S0,

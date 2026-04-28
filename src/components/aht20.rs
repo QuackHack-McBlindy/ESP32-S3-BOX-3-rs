@@ -9,7 +9,7 @@ use embedded_hal::i2c::I2c as HalI2c;
 use embedded_hal_bus::i2c::CriticalSectionDevice;
 use esp_hal::i2c::master::I2c;
 use esp_hal::Blocking;
-use crate::{init_bool, init_u8, init_u32, init_i8, init_i32, store, load};
+use crate::{init_u8, store};
 
 init_u8!(HUMIDITY, 0);
 init_u8!(TEMPERATURE, 0);

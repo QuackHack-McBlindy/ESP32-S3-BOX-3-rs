@@ -1,10 +1,5 @@
 // BASE/MACROS
 // SIMPLE HELPERS
-use critical_section;
-use embassy_sync::blocking_mutex::CriticalSectionMutex;
-use esp_hal::ledc::{LowSpeed, channel::{Channel, ChannelIFace}};
-use embassy_executor::Spawner;
-use defmt::{info, Debug2Format, error};
 
 // WAIT_MS (BLOCKING)
 // USAGE:

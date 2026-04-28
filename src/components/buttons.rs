@@ -3,7 +3,6 @@ use embassy_executor::task;
 use embassy_time::{Timer, Duration};
 use esp_hal::gpio::Input;
 use crate::init_bool;
-use crate::load;
 use crate::store;
 use crate::toggle;
 

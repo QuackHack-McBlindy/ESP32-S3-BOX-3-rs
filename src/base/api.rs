@@ -9,21 +9,18 @@ use defmt::info;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec;
-use esp_hal::time::Instant;
 use embassy_net::Ipv4Address;
 
-use crate::apps::media;
 use crate::components::aht20::HUMIDITY;
 use crate::components::aht20::TEMPERATURE;
 use crate::components::presence::PRESENCE;
-use crate::apps::media::{PLAYER, PLAYLIST, PlaybackState};
 use crate::{BATTERY_PERCENT, BATTERY_VOLTAGE, RSSI, CURRENT_IP, MIC_VOLUME, SPEAKER_VOLUME, MIC_MUTED, SPEAKER_MUTED, BACKLIGHT_PERCENT, DISPLAY_STATE, FW_VERSION};
-use crate::{init_bool, init_u8, init_u32, init_i8, init_i32, store, load};
+use crate::{init_bool, store, load};
 
 // INIT ATOMIC DEFAULT VALUES
 init_bool!(POWER_STATE, true);
 init_bool!(MIC_ACTIVE, true);
-init_bool!(pause_flag, true);
+init_bool!(PAUSE_FLAG, true);
 
 // GET /API - RETURN LIST OF ENDPOINTS 
 fn api_list_handler(_req: Request<'_>) -> Response {
@@ -180,8 +177,8 @@ fn sensor_fetcher(req: Request<'_>) -> Response {
     let rssi = load!(RSSI);
     let mic_vol = load!(MIC_VOLUME);
     let spk_vol = load!(SPEAKER_VOLUME);
-    let mic_muted = load!(MIC_MUTED);
-    let spk_muted = load!(SPEAKER_MUTED);
+    let _mic_muted = load!(MIC_MUTED);
+    let _spk_muted = load!(SPEAKER_MUTED);
     let temp = load!(TEMPERATURE);
     let hum = load!(HUMIDITY);
     let presence = load!(PRESENCE);

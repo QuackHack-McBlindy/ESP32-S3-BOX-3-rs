@@ -2,7 +2,7 @@
 name = "ESP32-S3-BOX-3"
 rust-version = "1.88"
 edition = "2024"
-version = "0.1.7"
+version = "0.1.8"
 
 [dependencies]
 # QUACKHACK-MCBLINDY CRATES
@@ -12,7 +12,7 @@ yo-esp = "0.1.3"
 es7210 = "0.1.0"
 es8311 = "0.1.0"
 # TINYAPI - SETUP GET API ROUTES 
-tinyapi = "0.1.6"
+tinyapi = "0.1.7"
 # BARELY-FUZZY - LEVENSTEIN + TRIGRAM
 #barely-fuzzy = { path = "./vendor/barely-fuzzy", default-features = false, features = ["alloc"] }
 

@@ -1,15 +1,12 @@
 // COMPONENTS/DISPLAY
 use defmt::info;
 use alloc::format;
-use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
-use alloc::string::String;
 use alloc::string::ToString;
 use embassy_time::Duration;
 use crate::BACKLIGHT_PERCENT;
 use crate::load;
 use crate::store;
 use crate::wait_ms;
-use crate::init_u8;
 use crate::DISPLAY;
 use crate::RSSI;
 use crate::CURRENT_IP;

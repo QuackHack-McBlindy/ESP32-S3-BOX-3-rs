@@ -128,7 +128,7 @@ pub async fn init(
     let net_config = NetConfig::dhcpv4(DhcpConfig::default());
 
     // RANDOM SEED (USES HARDWARE RNG INTERNALLY)
-    let mut rng = Rng::new();
+    let rng = Rng::new();
     let seed: u64 = (u64::from(rng.random())) << 32 | u64::from(rng.random());
 
     let stack_resources = mk_static!(StackResources<16>, StackResources::<16>::new());
