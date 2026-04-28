@@ -4,6 +4,48 @@ use critical_section;
 use embassy_sync::blocking_mutex::CriticalSectionMutex;
 use esp_hal::ledc::{LowSpeed, channel::{Channel, ChannelIFace}};
 use embassy_executor::Spawner;
+use defmt::{info, Debug2Format, error};
+
+// WAIT_MS (BLOCKING)
+// USAGE:
+// wait_ms!(100);
+#[macro_export]
+macro_rules! wait_ms {
+    ($ms:expr) => {
+        embassy_time::block_for(embassy_time::Duration::from_millis($ms))
+    };
+}
+
+// WAIT_S (BLOCKING)
+// USAGE:
+// wait_s!(10);
+#[macro_export]
+macro_rules! wait_s {
+    ($s:expr) => {
+        embassy_time::block_for(embassy_time::Duration::from_secs($s))
+    };
+}
+
+// DELAY_MS
+// USAGE:
+// delay_ms!(100);
+#[macro_export]
+macro_rules! delay_ms {
+    ($ms:expr) => {
+        embassy_time::Timer::after(embassy_time::Duration::from_millis($ms)).await
+    };
+}
+
+// DELAY_S
+// USAGE:
+// delay_s!(10);
+#[macro_export]
+macro_rules! delay_s {
+    ($s:expr) => {
+        embassy_time::Timer::after(embassy_time::Duration::from_secs($s)).await
+    };
+}
+
 
 // INIT ATOMIC VARIABLES
 
@@ -15,6 +57,19 @@ macro_rules! init_bool {
     ($name:ident, $val:expr) => {
         pub static $name: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new($val);
     };
+}
+
+// TOGGLE
+// USAGE:
+// toggle!(STATE);
+#[macro_export]
+macro_rules! toggle {
+    ($var:expr) => {{
+        let prev = $var.fetch_xor(true, ::core::sync::atomic::Ordering::Relaxed);
+        let new = !prev;
+        defmt::info!("toggled {} to {}", stringify!($var), new);
+        new
+    }};
 }
 
 // INIT_u8

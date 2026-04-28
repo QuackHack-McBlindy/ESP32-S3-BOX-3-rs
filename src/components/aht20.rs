@@ -9,10 +9,10 @@ use embedded_hal::i2c::I2c as HalI2c;
 use embedded_hal_bus::i2c::CriticalSectionDevice;
 use esp_hal::i2c::master::I2c;
 use esp_hal::Blocking;
-use core::sync::atomic::{AtomicU8, Ordering}; 
+use crate::{init_bool, init_u8, init_u32, init_i8, init_i32, store, load};
 
-pub static HUMIDITY: AtomicU8 = AtomicU8::new(0);
-pub static TEMPERATURE: AtomicU8 = AtomicU8::new(0);
+init_u8!(HUMIDITY, 0);
+init_u8!(TEMPERATURE, 0);
 
 pub async fn read_aht20_async<I2C: HalI2c>(i2c: &mut I2C) -> Option<(f32, f32)> {
     // SEND INITIALIZATION COMMAND TO THE AHT20 SENSOR (0xBE 0x08 0x00)
@@ -75,8 +75,8 @@ pub async fn sensor_task(i2c_mutex: &'static CsMutex<RefCell<I2c<'static, Blocki
             let hum_int = (hum * 10.0) as u16;
 
             // STORE AS ATOMIC
-            TEMPERATURE.store(temp as u8, Ordering::Relaxed);
-            HUMIDITY.store(hum as u8, Ordering::Relaxed);
+            store!(TEMPERATURE, temp_int as u8);
+            store!(HUMIDITY, hum_int as u8);
             
             // PRINT
             info!("🌡️ {=u16}.{=u16} °C, 💨 {=u16}.{=u16}%", temp_int / 10, temp_int % 10, hum_int / 10, hum_int % 10);

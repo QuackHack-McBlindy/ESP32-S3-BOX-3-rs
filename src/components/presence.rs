@@ -4,8 +4,9 @@ use embassy_executor::task;
 use embassy_time::{Duration, Timer};
 use esp_hal::gpio::Input;
 use defmt::debug;
+use crate::{init_bool, init_u8, init_u32, init_i8, init_i32, store, load};
 
-pub static PRESENCE: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+init_bool!(PRESENCE, false);
 
 // SIMPLE TASK THAT MONITORS HIGH/LOW SIGNALS
 // FROM THE PIN AND STORES VALUE AS ATOMIC
@@ -16,8 +17,7 @@ pub async fn occupancy_task(occupancy: Input<'static>) {
         let current = occupancy.is_high();
         
         // STORE AS ATOMIC
-        PRESENCE.store(current, core::sync::atomic::Ordering::Relaxed);
-        
+        store!(PRESENCE, current);
         // LOG
         if current != last {
             if current { 

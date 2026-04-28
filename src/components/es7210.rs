@@ -3,7 +3,7 @@
 
 use embedded_hal::i2c::I2c;
 
-// Register addresses
+// REGISTER ADDRESSES
 const RESET_REG00: u8 = 0x00;
 const CLOCK_OFF_REG01: u8 = 0x01;
 const MAINCLK_REG02: u8 = 0x02;
@@ -44,7 +44,7 @@ const MIC12_POWER_REG4B: u8 = 0x4B;
 const MIC34_POWER_REG4C: u8 = 0x4C;
 
 
-// Types and enums
+// TYPES AND ENUMS
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum I2sFormat {
@@ -115,7 +115,7 @@ pub enum Error<E> {
     NotSupported,
 }
 
-/// Stateless driver
+/// DRIVER
 pub struct Es7210 {
     addr: u8,
 }
@@ -141,56 +141,56 @@ impl Es7210 {
     where
         I2C: I2c<Error = E>,
     {
-        // Software reset
+        // SOFTWARE RESET
         self.write_reg(i2c, RESET_REG00, 0xFF)?;
         self.write_reg(i2c, RESET_REG00, 0x32)?;
 
-        // Set power-up timing
+        // SET POWER-UP TIMING
         self.write_reg(i2c, TIME_CONTROL0_REG09, 0x30)?;
         self.write_reg(i2c, TIME_CONTROL1_REG0A, 0x30)?;
 
-        // HPF configuration
+        // HPF CONFIGURATION
         self.write_reg(i2c, ADC12_HPF1_REG23, 0x2A)?;
         self.write_reg(i2c, ADC12_HPF2_REG22, 0x0A)?;
         self.write_reg(i2c, ADC34_HPF1_REG21, 0x2A)?;
         self.write_reg(i2c, ADC34_HPF2_REG20, 0x0A)?;
 
-        // I2S format and bit width
+        // I2S FORMAT AND BIT WIDTH
         self.set_i2s_format(i2c, cfg.i2s_format, cfg.bit_width, cfg.tdm_enable)?;
 
-        // Analog power and VMID
+        // ANALOG POWER AND VMID
         self.write_reg(i2c, ANALOG_REG40, 0xC3)?;
 
-        // MIC bias
+        // MIC BIAS
         self.set_mic_bias(i2c, cfg.mic_bias)?;
 
-        // MIC gain
+        // MIC GAIN
         self.set_mic_gain(i2c, cfg.mic_gain)?;
 
-        // Power up MICs
+        // POWER Up MICs
         self.write_reg(i2c, MIC1_POWER_REG47, 0x08)?;
         self.write_reg(i2c, MIC2_POWER_REG48, 0x08)?;
         self.write_reg(i2c, MIC3_POWER_REG49, 0x08)?;
         self.write_reg(i2c, MIC4_POWER_REG4A, 0x08)?;
 
-        // Sample rate and clock
+        // SAMPLE RATE AND CLOCK
         self.set_sample_rate(i2c, cfg.sample_rate_hz, cfg.mclk_ratio)?;
 
-        // Power down DLL
+        // POWER DOWN DLL
         self.write_reg(i2c, POWER_DOWN_REG06, 0x04)?;
 
-        // Power up ADCs and PGAs
+        // POWER UP ADCs AND PGAs
         self.write_reg(i2c, MIC12_POWER_REG4B, 0x0F)?;
         self.write_reg(i2c, MIC34_POWER_REG4C, 0x0F)?;
 
-        // Enable device
+        // ENABLE DEVICE
         self.write_reg(i2c, RESET_REG00, 0x71)?;
         self.write_reg(i2c, RESET_REG00, 0x41)?;
 
         Ok(())
     }
 
-    /// Mute or unmute all ADC channels.
+    /// MUTE OR UNMUTE ALL ADC CHANNELS
     pub fn set_mute<I2C, E>(&self, i2c: &mut I2C, mute: bool) -> Result<(), Error<E>>
     where
         I2C: I2c<Error = E>,
@@ -201,7 +201,7 @@ impl Es7210 {
         Ok(())
     }
 
-    /// Enable the codec (power up, start ADCs)
+    /// ENABLE THE CODEC (POWER UP, START ADCs)
     pub fn enable<I2C, E>(&self, i2c: &mut I2C) -> Result<(), Error<E>>
     where
         I2C: I2c<Error = E>,
@@ -211,17 +211,17 @@ impl Es7210 {
         Ok(())
     }
 
-    /// Disable the codec (power down, stop ADCs)
+    /// DISABLE THE CODEC (POWER DOWN, STOP ADCs)
     pub fn disable<I2C, E>(&self, i2c: &mut I2C) -> Result<(), Error<E>>
     where
         I2C: I2c<Error = E>,
     {
-        // Put the codec into reset / power‑down state
+        // PUT THE CODEC INTO RESET / POWER‑DOWN STATE
         self.write_reg(i2c, RESET_REG00, 0x00)?;
         Ok(())
     }
 
-
+    
     pub fn gain_set<I2C, E>(
         &self,
         i2c: &mut I2C,
@@ -242,7 +242,7 @@ impl Es7210 {
     }
 
 
-    // Private helpers
+    // PRIVATE HELPERS
     fn set_i2s_format<I2C, E>(
         &self,
         i2c: &mut I2C,
@@ -341,7 +341,7 @@ impl Es7210 {
 }
 
 
-// Clock coefficient table
+// CLOCK COEFFICIENT TABLE
 #[derive(Clone, Copy)]
 struct CoeffDiv {
     mclk: u32,

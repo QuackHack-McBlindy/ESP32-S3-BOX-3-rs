@@ -6,12 +6,13 @@
 
 
 Bare Metal *(no_std)* `ESP32-S3-BOX-3` firmware written in Rust (no `esp-idf`).   
-Designed to be used as a voice assistant and/or smart speaker.   
+Designed to be used as a voice assistant and smart speaker.   
 
   
-> [!CAUTION]
-> __Project is under active development!__ <br>
-> **Breaking changes will be frequent.**  
+> [!NOTE]
+> __🎵 Media Player__ <br>
+> **Media player supports any file format, and can play any file or playlist.**  
+> **You can use the provided `play-esp.sh` helper script to stream audioo to the device speaker.**
 <br>
 
 
@@ -29,12 +30,14 @@ https://github.com/user-attachments/assets/114fbcdf-cf9f-41ff-bd61-5da927f0481a
 - [x] i2s: TX Speaker  
 - [x] i2s: Simultaneous RX & TX 
 - [x] Voice Command Execution (Wake word, speech to shell command)
+- [x] Media Player - Stream any audio to speaker (wav, mp3, flac, mp4, ...)
+- [x] Intercom `ffmpeg -f alsa -i default -f s16le -ar 16000 -ac 2 - | nc <ESP_IP> 12345`
 - [x] On-Device API
 - [x] On-Device WebServer (UI frontend)
-- [ ] OTA (auto update from git repo)
+- [ ] OTA (auto update from git repo?)
 - [ ] InfraRed (Send & Recieve)
 - [ ] Touch UI (settings, clock, media player, TV remote)
-- [ ] Security & WireGuard
+- [ ] Security & WireGuard?
 - [x] Backend: `yo`
 
 `yo` is not only the backend server service but it's also where you will write your voice commands.  
@@ -130,25 +133,25 @@ $ docker compose up
 
 **Web UI**  
 
-Open your browser: `http://<esp-ip>:80`  
+Open your browser: `http://<ESP_IP>:80`  
 *(You will see your device ip in the terminal after flashing)*  
 
 Here you can control and fully utilize all components of the ESP32-S3-BOX-3 from your browser.     
-Logs will be at: `http://<esp-ip>:80/logs`  
+Logs will be at: `http://<ESP_IP>:80/logs`  
     
   
 
 #### **API**
 
 The API is designed to be easily expandable, it will most likely grow, best to check [src/base/api.rs](https://github.com/QuackHack-McBlindy/ESP32-S3-BOX-3-rs/blob/main/src/base/api.rs) for supported endpoints.    
-*or try fetch your available endpoints at:* `curl http://<esp-ip>:80/api`   
+*or try fetch your available endpoints at:* `curl http://<ESP_IP>:80/api`   
   
   
 Using the internal API you can for example set the `ESP32-S3-BOX-3` display brightness *(LEDC)* tp 75 percentae using:    
 
 
 ```bash
-curl http://<esp-ip>:80/api/settings/display/brightness/75 
+curl http://<ESP_IP>:80/api/settings/display/brightness/75 
 ```
   
 
@@ -195,7 +198,7 @@ curl http://<esp-ip>:80/api/settings/display/brightness/75
 
 [![Sponsors](https://img.shields.io/github/sponsors/QuackHack-McBlindy?logo=githubsponsors&label=Sponsor&style=flat&labelColor=ff1493&logoColor=fff&color=rgba(234,74,170,0.5) "")](https://github.com/sponsors/QuackHack-McBlindy) [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Sponsor?style=flat&logo=buymeacoffee&logoColor=fff&labelColor=ff1493&color=ff1493)](https://buymeacoffee.com/quackhackmcblindy)
 > 🦆🧑‍🦯 says ⮞ Hi! I'm QuackHack-McBlindy!  
-> 🦆🧑‍🦯 says ⮞ Like my work?  
+> Like my work?  
 > Buy me a coffee, or become a sponsor.  
 > Thanks for supporting open source/hungry developers ♥️🦆!   
 

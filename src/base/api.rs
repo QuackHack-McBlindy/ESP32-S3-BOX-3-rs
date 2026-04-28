@@ -17,12 +17,11 @@ use crate::components::aht20::HUMIDITY;
 use crate::components::aht20::TEMPERATURE;
 use crate::components::presence::PRESENCE;
 use crate::apps::media::{PLAYER, PLAYLIST, PlaybackState};
-use crate::{BATTERY_PERCENT, BATTERY_VOLTAGE, RSSI, CURRENT_IP, MIC_VOLUME, SPEAKER_VOLUME, MIC_MUTED, SPEAKER_MUTED, BACKLIGHT_PERCENT, FW_VERSION};
+use crate::{BATTERY_PERCENT, BATTERY_VOLTAGE, RSSI, CURRENT_IP, MIC_VOLUME, SPEAKER_VOLUME, MIC_MUTED, SPEAKER_MUTED, BACKLIGHT_PERCENT, DISPLAY_STATE, FW_VERSION};
 use crate::{init_bool, init_u8, init_u32, init_i8, init_i32, store, load};
 
 // INIT ATOMIC DEFAULT VALUES
 init_bool!(POWER_STATE, true);
-init_bool!(DISPLAY_STATE, true);
 init_bool!(MIC_ACTIVE, true);
 init_bool!(pause_flag, true);
 

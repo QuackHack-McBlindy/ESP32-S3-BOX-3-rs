@@ -6,7 +6,7 @@
 use defmt::{info, error};
 use embassy_executor::task;
 use embassy_net::{Stack, tcp::TcpSocket, IpAddress};
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Timer, Instant};
 use embassy_futures::select::select;
 use esp_hal::i2s::master::I2sRx;
 use esp_hal::Async;
@@ -111,6 +111,8 @@ pub async fn audio_capture_task(
         'stream: loop { 
             // SET `LISTENING` PHASE
             store!(ASSISTANT_PHASE, 1);
+            // START TIMER
+            let mut command_start: Option<Instant> = None;
             // GET NEXT AUDIO CHUNK
             let (chunk, _silent): (Vec<f32>, bool) = match mic.read_chunk().await {
                 Ok(pair) => pair,
@@ -172,10 +174,16 @@ pub async fn audio_capture_task(
                             Timer::after(Duration::from_millis(50)).await;
                             crate::components::display::brightness_set("0");
                             Timer::after(Duration::from_millis(50)).await;
-                            crate::components::display::brightness_set("70");              
+                            crate::components::display::brightness_set("70");          
+                            command_start = Some(Instant::now());
                         } // 0x03 == VOICE COMMAND EXECUTED SUCCESSFULLY
                         0x03 => {
-                            info!("✅ Executed command!");
+                            // ELAPSED TIME FOR EXECUTION
+                            if let Some(start) = command_start {
+                                let elapsed = start.elapsed();
+                                info!("✅ Executed command! Took {} ms", elapsed.as_millis());
+                                command_start = None; // RESET FOR NEXT COMMAND
+                            } else { info!("✅ Executed command!"); }
                             // SET `EXECUTED` PHASE
                             store!(ASSISTANT_PHASE, 4);
                             // PLAY DONE SOUND
@@ -186,7 +194,11 @@ pub async fn audio_capture_task(
                             store!(ASSISTANT_PHASE, 1);
                         } // 0x04 == FAILED VOICE COMMAND EXECUTION
                         0x04 => {
-                            info!("💩 FAILED execution!");
+                            if let Some(start) = command_start {
+                                let elapsed = start.elapsed();
+                                info!("💩 FAILED execution ({} ms)", elapsed.as_millis());
+                                command_start = None;
+                            } else { info!("💩 FAILED execution!"); }  
                             // SET `FAILED` PHASE
                             store!(ASSISTANT_PHASE, 5);
                             // PLAY DUCK SAY `OH FUCK` SOUND

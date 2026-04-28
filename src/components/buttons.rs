@@ -2,8 +2,12 @@
 use embassy_executor::task;
 use embassy_time::{Timer, Duration};
 use esp_hal::gpio::Input;
+use crate::init_bool;
+use crate::load;
+use crate::store;
+use crate::toggle;
 
-pub static BUTTON_PRESSED: core::sync::atomic::AtomicBool = core::sync::atomic::AtomicBool::new(false);
+init_bool!(BUTTON_PRESSED, false);
 
 // TASK THAT
 #[task] // TAKES BUTTON AS ARGUMENT
@@ -12,14 +16,17 @@ pub async fn button_task(button: Input<'static>) {
         // LOW BUTTON == PRESSED BUTTON
         if button.is_low() { 
             // SET THE ATOMIC BOOL FLAG
-            BUTTON_PRESSED.store(true, core::sync::atomic::Ordering::Relaxed);
+            store!(BUTTON_PRESSED, true);
+            // TOGGLE DISPLAY
+            toggle!(crate::DISPLAY_STATE);
+            yo_esp::play_ding().await;
 
-            // WAIT UNTIL BUTTON IS RELEASED
+            // WAIT FOR RELEASE
             Timer::after(Duration::from_millis(200)).await;
             while button.is_low() {
                 Timer::after(Duration::from_millis(10)).await;
             }
-        }
+        } else { store!(BUTTON_PRESSED, false); }
         Timer::after(Duration::from_millis(50)).await;
     }
 }
