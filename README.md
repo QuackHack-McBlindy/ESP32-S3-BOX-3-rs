@@ -6,7 +6,8 @@
 
 
 Bare Metal *(no_std)* `ESP32-S3-BOX-3` firmware written in Rust (no `esp-idf`).   
-Designed to be used as a voice assistant and smart speaker.   
+Designed to be used as a voice assistant and smart speaker.  
+Run this with a tiny GGML model (raise fuzzy matching level) and it will be **instant!**.  
 
   
 > [!NOTE]
@@ -16,7 +17,11 @@ Designed to be used as a voice assistant and smart speaker.
 <br>
 
 
-https://github.com/user-attachments/assets/114fbcdf-cf9f-41ff-bd61-5da927f0481a
+
+
+https://github.com/user-attachments/assets/f0ece35f-b094-4a7a-9258-403cbdb0cf57
+
+
 
 
 
@@ -211,5 +216,5 @@ curl http://<ESP_IP>:80/api/settings/display/brightness/75
 
 ## **License**
 
-**MIT**  
-
+This project is licensed under the terms of the MIT license.  
+See the `LICENSE` file in the repository for full details.  
