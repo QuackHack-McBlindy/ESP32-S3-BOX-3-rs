@@ -1,12 +1,16 @@
 // COMPONENTS/DISPLAY
 use defmt::info;
 use alloc::format;
+use core::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use alloc::string::String;
 use alloc::string::ToString;
 use embassy_time::Duration;
+use esp_hal::ledc::channel::ChannelIFace;
 use crate::BACKLIGHT_PERCENT;
 use crate::load;
 use crate::store;
 use crate::wait_ms;
+use crate::init_u8;
 use crate::DISPLAY;
 use crate::RSSI;
 use crate::CURRENT_IP;
@@ -95,6 +99,34 @@ pub fn brightness_set(value: &str) {
         store!(crate::BACKLIGHT_PERCENT, percent);
         info!("🔆 {}%", percent);
     } else { info!("invalid brightness value!"); }
+}
+
+
+
+#[embassy_executor::task]
+pub async fn display_state_task() {
+    let mut last_state = false;
+    loop { // GET CURRENT
+        let current = load!(crate::DISPLAY_STATE);
+        if current != last_state {
+            if current {
+                brightness_set("70");
+            } else { brightness_set("0"); }
+            last_state = current;
+        } // GET EVER 100ms
+        embassy_time::Timer::after(embassy_time::Duration::from_millis(100)).await;
+    }
+}
+
+#[embassy_executor::task]
+pub async fn backlight_task(
+    channel: &'static mut esp_hal::ledc::channel::Channel<'static, esp_hal::ledc::LowSpeed>,
+) {
+    loop {
+        let percent = load!(BACKLIGHT_PERCENT);
+        channel.set_duty(percent).unwrap();
+        embassy_time::Timer::after(embassy_time::Duration::from_millis(100)).await;
+    }
 }
 
 // FLASH DISPLAY

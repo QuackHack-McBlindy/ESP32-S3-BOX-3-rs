@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ESP32-S3-BOX-3"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "bt-hci 0.6.0",
  "critical-section",
@@ -2727,7 +2727,9 @@ dependencies = [
 
 [[package]]
 name = "tinyapi"
-version = "0.1.6"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f2d765b3b3cc8c296c9bf98951cc5b4e404ebaf2be503b26be202ec81075266a"
 dependencies = [
  "critical-section",
  "defmt 1.0.1",

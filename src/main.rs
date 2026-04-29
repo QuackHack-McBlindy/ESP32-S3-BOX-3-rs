@@ -4,7 +4,7 @@
 #![no_std]
 #![no_main]
 // NOBODY TELLS ME WHAT TO DO!
-//#![allow(warnings)]
+#![allow(warnings)]
 #![allow(non_snake_case)]
 #![deny(clippy::mem_forget)]
 #![deny(clippy::large_stack_frames)]
@@ -157,14 +157,14 @@ pub type I2cBus = I2c<'static, Blocking>;
 
 
 // MONITOR AND CONTROL DISPLAY BRIGHTNESS
-#[embassy_executor::task]
-async fn backlight_task(channel: &'static mut Channel<'static, LowSpeed>) {
-    loop {
-        let percent = load!(BACKLIGHT_PERCENT);
-        channel.set_duty(percent).unwrap();
-        Timer::after(Duration::from_millis(100)).await;
-    }
-}
+//#[embassy_executor::task]
+//async fn backlight_task(channel: &'static mut Channel<'static, LowSpeed>) {
+//    loop {
+//        let percent = load!(BACKLIGHT_PERCENT);
+//        channel.set_duty(percent).unwrap();
+//        Timer::after(Duration::from_millis(100)).await;
+//    }
+//}
 
 
 fn mic_volume_percent_to_db(percent: u8) -> i8 {
@@ -481,7 +481,7 @@ async fn main(spawner: Spawner) -> ! {
     // YO-HANDLER 
     let handler: alloc::boxed::Box<dyn yo_esp::CommandHandler> = alloc::boxed::Box::new(VoiceHandler);  
     // INIT API ROUTES
-    base::api::init_routes().await;
+    crate::base::api::init_routes().await;
 
 
     // TASKS
@@ -497,14 +497,14 @@ async fn main(spawner: Spawner) -> ! {
     // AUDIO SETTINGS TASK
     //spawn!(spawner, audio_settings_task());
     // SENSOR TASK (TEMPERATURE/HUMIDITY)
-    spawn!(spawner, components::aht20::sensor_task(i2c_b_mutex));
+    spawn!(spawner, crate::components::aht20::sensor_task(i2c_b_mutex));
     // PRESENCE SENSOR TASK
-    spawn!(spawner, components::presence::occupancy_task(occupancy));
+    spawn!(spawner, crate::components::presence::occupancy_task(occupancy));
     // BUTTON MONITOR TASK (TOP-LEFT BUTTON)
-    spawn!(spawner, components::buttons::button_task(button_top_left));
+    spawn!(spawner, crate::components::buttons::button_task(button_top_left));
     // DISPLAY TASK
     //spawn!(spawner, components::display::display_task());
-    spawn!(spawner, backlight_task(backlight_channel));
+    spawn!(spawner, crate::components::display::backlight_task(backlight_channel));
 
     
     loop { // CALIBRATE BATTERY READ WITH PREDEFINED MIN/MAX mV VALUES
