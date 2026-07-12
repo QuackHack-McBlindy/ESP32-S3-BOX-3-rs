@@ -9,10 +9,7 @@ use embedded_hal::i2c::I2c as HalI2c;
 use embedded_hal_bus::i2c::CriticalSectionDevice;
 use esp_hal::i2c::master::I2c;
 use esp_hal::Blocking;
-use crate::{init_u8, store};
 
-init_u8!(HUMIDITY, 0);
-init_u8!(TEMPERATURE, 0);
 
 pub async fn read_aht20_async<I2C: HalI2c>(i2c: &mut I2C) -> Option<(f32, f32)> {
     // SEND INITIALIZATION COMMAND TO THE AHT20 SENSOR (0xBE 0x08 0x00)
@@ -75,12 +72,12 @@ pub async fn sensor_task(i2c_mutex: &'static CsMutex<RefCell<I2c<'static, Blocki
             let hum_int = (hum * 10.0) as u16;
 
             // STORE AS ATOMIC
-            store!(TEMPERATURE, temp_int as u8);
-            store!(HUMIDITY, hum_int as u8);
+            crate::store!(crate::state::TEMPERATURE, temp_int as u8);
+            crate::store!(crate::state::HUMIDITY, hum_int as u8);
             
             // PRINT
             info!("🌡️ {=u16}.{=u16} °C, 💨 {=u16}.{=u16}%", temp_int / 10, temp_int % 10, hum_int / 10, hum_int % 10);
-            tinyapi::log!("🌡️ {}.{} °C, 💨 {}.{}%", temp_whole, temp_frac, hum_whole, hum_frac);
+            //tinyapi::log!("🌡️ {}.{} °C, 💨 {}.{}%", temp_whole, temp_frac, hum_whole, hum_frac);
         } else { info!("AHT20 read failed"); }
         Timer::after(Duration::from_secs(60)).await;
     }

@@ -17,7 +17,7 @@ pub async fn button_task(button: Input<'static>) {
             // SET THE ATOMIC BOOL FLAG
             store!(BUTTON_PRESSED, true);
             // TOGGLE DISPLAY
-            toggle!(crate::DISPLAY_STATE);
+            toggle!(crate::state::DISPLAY_STATE);
             yo_esp::play_ding().await;
 
             // WAIT FOR RELEASE

@@ -1,8 +1,21 @@
+.wg-client.conf
+./.wg-client.conf
+wg-client.conf
+./wg-client.conf
+dump/
+**/dump/
 .env
+**/.env
+target/
+**/target/
+release/
+**/release/
+
+
 # will have compiled files and executables
 debug/
-target/
-dump/
+
+
 # Editor configuration
 .vscode/
 .zed/

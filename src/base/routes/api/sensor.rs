@@ -1,0 +1,139 @@
+// BASE/ROUTES/API/SENSOR
+
+
+// GET /API/SENSOR/{val}
+pub fn handle_sensor(req: tinyapi::Request<'_>) -> tinyapi::Response {
+    let sensor_name = req.param("value").unwrap_or("unknown");
+    defmt::info!("Sensor fetch requested: {}", sensor_name);
+
+    let battery_percent = crate::load!(crate::state::BATTERY_PERCENT);
+    let battery_voltage = crate::load!(crate::state::BATTERY_VOLTAGE);
+    let rssi = crate::load!(crate::state::RSSI);
+    let mic_vol = crate::load!(crate::state::MIC_VOLUME);
+    let spk_vol = crate::load!(crate::state::SPEAKER_VOLUME);
+    let _mic_muted = crate::load!(crate::state::MIC_MUTED);
+    let _spk_muted = crate::load!(crate::state::SPEAKER_MUTED);
+
+    let brightness = crate::load!(crate::state::DISPLAY_BRIGHTNESS);
+    let ip_raw = crate::load!(crate::state::CURRENT_IP);
+    let ip = embassy_net::Ipv4Address::from(ip_raw);
+    // let uptime
+    // let time
+    let version = crate::state::FW_VERSION;
+
+    
+    let response_str = match sensor_name {
+        "battery" | "battery_level" | "battery_percentage" => alloc::format!("{}", battery_percent),
+        "battery_voltage" | "voltage" => alloc::format!("{}", battery_voltage),
+        "brightness" | "display" => alloc::format!("{}", brightness),
+        "rssi" | "wifi_signal" | "wifi" => alloc::format!("{}", rssi),
+        "ip" => alloc::format!("{}", ip),
+        "media" => alloc::string::String::from("Nothing playing.."),
+        "speaker" => alloc::format!("{}", spk_vol),
+        "mic" => alloc::format!("{}", mic_vol),
+        "uptime" => alloc::format!("19:34"),        
+        "time" => alloc::format!("19:34"),        
+        "firmware" | "version" => alloc::format!("{}", version),
+        _ => alloc::format!("unknown")
+    };
+    tinyapi::Response::text(&response_str)
+}
+
+// GET /API/SENSORS (SHOWS ALL SENSOR VALUES IN ONE CALL FORMATTED AS JSON)
+pub fn handle_sensors(_req: tinyapi::Request<'_>) -> tinyapi::Response {
+    // BATTERY
+    let battery_percent = crate::load!(crate::state::BATTERY_PERCENT);
+    let battery_voltage = crate::load!(crate::state::BATTERY_VOLTAGE);
+    let battery_charging = crate::load!(crate::state::BATTERY_CHARGING);
+    let battery_need_charging = crate::load!(crate::state::BATTERY_NEED_CHARGING);
+    let battery_full = crate::load!(crate::state::BATTERY_FULL);
+    let battery_usb_connected = crate::load!(crate::state::BATTERY_USB_CONNECTED);
+
+    // NETWORK/SYSTEM
+    let rssi = crate::load!(crate::state::RSSI);
+    let ip_raw = crate::load!(crate::state::CURRENT_IP);
+    let ip = embassy_net::Ipv4Address::from(ip_raw);
+    let version = crate::state::FW_VERSION;
+
+    // AUDIO
+    let mic_vol = crate::load!(crate::state::MIC_VOLUME);
+    let spk_vol = crate::load!(crate::state::SPEAKER_VOLUME);
+    let mic_muted = crate::load!(crate::state::MIC_MUTED);
+    let speaker_muted = crate::load!(crate::state::SPEAKER_MUTED);
+    let speaker_task_state = crate::load!(crate::state::SPEAKER_TASK_STATE);
+    let speaker_allow_streaming = crate::load!(crate::state::SPEAKER_ALLOW_STREAMING);
+    let amplifier_state = crate::load!(crate::state::AMPLIFIER_STATE);
+
+    // DISPLAY
+    let display_state = crate::load!(crate::state::DISPLAY_STATE);
+    let brightness = crate::load!(crate::state::DISPLAY_BRIGHTNESS);
+    let display_timeout = crate::load!(crate::state::DISPLAY_TIMEOUT_SECS);
+
+    // MEDIA/STORAGE
+    let media_is_playing = crate::load!(crate::state::MEDIA_IS_PLAYING);
+
+    // POWER/CPU
+    let cpu_freq = crate::load!(crate::state::CPU_FREQ);
+    let powerdown_timeout = crate::load!(crate::state::POWERDOWN_TIMEOUT_SECS);
+
+    // SERVICES
+    let vpn_state = crate::load!(crate::state::WG_STATE);
+    let vpn_active = crate::load!(crate::state::VPN_ACTIVE);
+
+    // TIME
+    let uptime_secs = crate::load!(crate::state::UPTIME_SECS);
+    let uptime_str = {
+        let days = uptime_secs / 86400;
+        let hours = (uptime_secs % 86400) / 3600;
+        let minutes = (uptime_secs % 3600) / 60;
+        let seconds = uptime_secs % 60;
+        if days > 0 {
+            alloc::format!("{}d {:02}h {:02}m {:02}s", days, hours, minutes, seconds)
+        } else if hours > 0 {
+            alloc::format!("{:02}h {:02}m {:02}s", hours, minutes, seconds)
+        } else if minutes > 0 {
+            alloc::format!("{:02}m {:02}s", minutes, seconds)
+        } else {
+            alloc::format!("{}s", seconds)
+        }
+    };
+    let time_secs = crate::load!(crate::state::CURRENT_TIME_SECS);
+    let time_str = if time_secs > 0 {
+        let hours = (time_secs % 86400) / 3600;
+        let minutes = (time_secs % 3600) / 60;
+        let seconds = time_secs % 60;
+        alloc::format!("{:02}:{:02}:{:02}", hours, minutes, seconds)
+    } else { "unknown".into() };
+
+
+    let response_str = alloc::format!(
+        "{{\"battery_percent\":{},\"battery_voltage\":{},\"battery_charging\":{},\"battery_need_charging\":{},\"battery_full\":{},\"battery_usb_connected\":{},\"display_state\":{},\"display_timeout\":{},\"rssi\":{},\"mic_volume\":{},\"speaker_volume\":{},\"brightness\":{},\"ip\":\"{}\",\"uptime\":\"{}\",\"time\":\"{}\",\"firmware\":\"{}\",\"mic_muted\":{},\"speaker_muted\":{},\"speaker_task_state\":{},\"speaker_allow_streaming\":{},\"amplifier_state\":{},\"media_is_playing\":{},\"cpu_freq\":{},\"vpn_state\":{},\"vpn_active\":{},\"media\":\"Nothing playing\"}}",
+        battery_percent,
+        battery_voltage,
+        battery_charging,
+        battery_need_charging,
+        battery_full,
+        battery_usb_connected,
+        display_state,
+        display_timeout,
+        rssi,
+        mic_vol,
+        spk_vol,
+        brightness,
+        ip,
+        uptime_str,
+        time_str,
+        version,
+        mic_muted,
+        speaker_muted,
+        speaker_task_state,
+        speaker_allow_streaming,
+        amplifier_state,
+        media_is_playing,
+        cpu_freq,
+        vpn_state,
+        vpn_active
+    );
+
+    tinyapi::Response::text(&response_str)
+}

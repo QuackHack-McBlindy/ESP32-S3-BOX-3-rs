@@ -1,262 +1,133 @@
 // BASE/API
 // CONFIGURES `GET` ENDPOINTS VIA `tinyapi`
-// FOR CONTROLLING/CONFIGURING THE DEVICE EXTERNALLY
+// FOR CONTROLLING/CONFIGURING THE ESP32 EXTERNALLY & VIA VOICE COMMANDS
 // ++ SERVE WEBSERVER AT `http://0.0.0.0:80`
 // EXAMPLE USAGE: (SET DISPLAY BRIGHTNESS TO `70%` USING `curl`) 
-// `curl 192.168.1.11:80/api/settings/display/brightness/70`
-use tinyapi::{log, register_route, Request, Response};
-use defmt::info;
-use alloc::format;
-use alloc::string::String;
-use alloc::vec;
-use esp_hal::time::Instant;
-use embassy_net::Ipv4Address;
+// `curl 192.168.1.11/api/settings/display/brightness/70`
 
-use crate::apps::media;
-use crate::components::aht20::HUMIDITY;
-use crate::components::aht20::TEMPERATURE;
-use crate::components::presence::PRESENCE;
-use crate::apps::media::{PLAYER, PLAYLIST, PlaybackState};
-use crate::{BATTERY_PERCENT, BATTERY_VOLTAGE, RSSI, CURRENT_IP, MIC_VOLUME, SPEAKER_VOLUME, MIC_MUTED, SPEAKER_MUTED, BACKLIGHT_PERCENT, DISPLAY_STATE, FW_VERSION};
-use crate::{init_bool, init_u8, init_u32, init_i8, init_i32, store, load};
 
-// INIT ATOMIC DEFAULT VALUES
-init_bool!(POWER_STATE, true);
-init_bool!(MIC_ACTIVE, true);
-init_bool!(pause_flag, true);
-
-// GET /API - RETURN LIST OF ENDPOINTS 
-fn api_list_handler(_req: Request<'_>) -> Response {
-    let endpoints = vec![
-        "/",
-        "/api/settings/power/state/{value}",
-        "/api/settings/display/state/{value}",
-        // ...
-    ];
-    Response::text(&endpoints.join("\n"))
-}
-
-// GET /INDEX.HTML - SERVES WEB FRONTEND 
-fn index_handler(_req: Request<'_>) -> Response {
-    Response::html(include_str!("./../../assets/index.html"))
-}
-
-// GET /FAVICON.ICO - SERVES FRONTEND FAVICON
-fn favicon_handler(_req: Request<'_>) -> Response {
-    //Response::file(include_bytes!("./../assets/favicon.ico"));
-    Response::not_found()    
-}
-
-// GET /SCRIPT.JS - SERVES FRONTEND JAVASCRIPT
-fn js_handler(_req: Request<'_>) -> Response {
-    Response::script(include_str!("./../../assets/script.js"))
-}
-
-// GET /OTA - OVER THE AIR UPDATES 
-fn ota_handler(_req: Request<'_>) -> Response {
-    info!("OTA update requested");
-    Response::text("update started")
-}
-
-// GET /API/SETTINGS/DISPLAY/BRIGHTNESS/{val}
-pub fn brightness_handler(req: Request<'_>) -> Response {
-    let value = req.param("value").unwrap_or("?");
-    info!("Setting brightness to {}", value);
-    if let Ok(percent) = value.parse::<u8>() {
-        let percent = percent.clamp(0, 80);
-        store!(BACKLIGHT_PERCENT, percent);
-    }
-    let msg = format!("Brightness set to {}", value);
-    Response::text(&msg)
-}
-
-// GET /API/SETTINGS
-fn power_state_handler(req: Request<'_>) -> Response {
-    let value = req.param("value").unwrap_or("toggle");
-    match value {
-        "on" => store!(POWER_STATE, true),
-        "off" => store!(POWER_STATE, false),
-        _ => {
-            let new = !load!(POWER_STATE);
-            store!(POWER_STATE, new);
-        }
-    }
-    let state = load!(POWER_STATE);
-    info!("Power state -> {}", if state { "ON" } else { "OFF" });
-    Response::text(if state { "ON" } else { "OFF" })
-}
-
-// GET /API/SETTINGS/DISPLAY
-fn display_state_handler(req: Request<'_>) -> Response {
-    let value = req.param("value").unwrap_or("toggle");
-    match value {
-        "on" => store!(DISPLAY_STATE, true),
-        "off" => store!(DISPLAY_STATE, false),
-        _ => {
-            let new = !load!(DISPLAY_STATE);
-            store!(DISPLAY_STATE, new);
-        }
-    }
-    let state = load!(DISPLAY_STATE);
-    info!("Display state -> {}", if state { "ON" } else { "OFF" });
-    Response::text(if state { "ON" } else { "OFF" })
-}
-
-// GET /API/SETTINGS/MIC/VOLUME/{val}
-fn mic_volume_handler(req: Request<'_>) -> Response {
-    let value = req.param("value").unwrap_or("?");
-    if let Ok(vol) = value.parse::<u8>() {
-        let vol = vol.clamp(0, 100);
-        store!(MIC_VOLUME, vol);
-        info!("Mic volume set to {}%", vol);
-    }
-    Response::text(&format!("Mic volume {}", value))
-}
-
-fn mic_mute_handler(req: Request<'_>) -> Response {
-    let value = req.param("value").unwrap_or("toggle");
-    match value {
-        "1" | "on" | "mute" => store!(MIC_MUTED, true),
-        "0" | "off" | "unmute" => store!(MIC_MUTED, false),
-        _ => {
-            let new = !load!(MIC_MUTED);
-            store!(MIC_MUTED, new);
-        }
-    }
-    let muted = load!(MIC_MUTED);
-    if muted {
-        store!(MIC_VOLUME, 0);
-    } else {
-        store!(MIC_VOLUME, 72);
-    }
-    info!("Mic muted: {}", muted);
-    Response::text(if muted { "muted" } else { "unmuted" })
-}
-
-fn speaker_volume_handler(req: Request<'_>) -> Response {
-    let value = req.param("value").unwrap_or("?");
-    if let Ok(vol) = value.parse::<u8>() {
-        let vol = vol.clamp(0, 100);
-        store!(SPEAKER_VOLUME, vol);
-        info!("Speaker volume set to {}%", vol);
-    }
-    Response::text(&format!("Speaker volume {}", value))
-}
-
-fn speaker_mute_handler(req: Request<'_>) -> Response {
-    let value = req.param("value").unwrap_or("toggle");
-    match value {
-        "1" | "on" | "mute" => store!(SPEAKER_MUTED, true),
-        "0" | "off" | "unmute" => store!(SPEAKER_MUTED, false),
-        _ => {
-            let new = !load!(SPEAKER_MUTED);
-            store!(SPEAKER_MUTED, new);
-        }
-    }
-    let muted = load!(SPEAKER_MUTED);
-    if muted {
-        store!(SPEAKER_VOLUME, 0);
-    } else {
-        store!(SPEAKER_VOLUME, 58);
-    }
-    info!("Speaker muted: {}", muted);
-    Response::text(if muted { "muted" } else { "unmuted" })
-}
-
-fn media_handler(req: Request<'_>) -> Response {
-    let action = req.param("action").unwrap_or("none");
-    info!("Media action: {}", action);
-    let status = crate::apps::media::handle_action(action);
-    Response::text(status)
-}
-
-// GET /API/SENSOR/{val}
-fn sensor_fetcher(req: Request<'_>) -> Response {
-    let sensor_name = req.param("value").unwrap_or("unknown");
-    info!("Sensor fetch requested: {}", sensor_name);
-
-    let battery_percent = load!(BATTERY_PERCENT);
-    let battery_voltage = load!(BATTERY_VOLTAGE);
-    let rssi = load!(RSSI);
-    let mic_vol = load!(MIC_VOLUME);
-    let spk_vol = load!(SPEAKER_VOLUME);
-    let mic_muted = load!(MIC_MUTED);
-    let spk_muted = load!(SPEAKER_MUTED);
-    let temp = load!(TEMPERATURE);
-    let hum = load!(HUMIDITY);
-    let presence = load!(PRESENCE);
-    let brightness = load!(BACKLIGHT_PERCENT);
-    let ip_raw = load!(CURRENT_IP);
-    let ip = Ipv4Address::from(ip_raw);
-    // let uptime
-    let version = FW_VERSION;
-    // let media
-    
-
-    let response_str = match sensor_name {
-        "temp" | "temperature" => format!("{}", temp),
-        "hum" | "humidity" => format!("{}", hum),
-        "battery" | "battery_level" | "battery_percentage" => format!("{}", battery_percent),
-        "battery_voltage" | "voltage" => format!("{}", battery_voltage),
-        "brightness" | "display" => format!("{}", brightness),
-        "occupancy" | "motion" | "presence" => format!("{}", presence),
-        "rssi" | "wifi_signal" | "wifi" => format!("{}", rssi),
-        "ip" => format!("{}", ip),
-        "ir" => String::from("11111"),
-        "media" => String::from("Nothing playing.."),
-        "speaker" => format!("{}", spk_vol),
-        "mic" => format!("{}", mic_vol),
-        "uptime" => format!("19:34"),        
-        "time" => format!("19:34"),        
-        "firmware" | "version" => format!("{}", version),
-        _ => format!("unknown")
-    };
-    Response::text(&response_str)
-}
-
-fn voice_state_handler(req: Request<'_>) -> Response {
-    let value = req.param("value").unwrap_or("toggle");
-    match value {
-        "start" => {
-            info!("Voice recording started");
-            store!(MIC_ACTIVE, true);
-        }
-        "stop" => {
-            info!("Voice recording stopped");
-            store!(MIC_ACTIVE, false);
-        }
-        _ => {
-            info!("Invalid voice state: {}", value);
-            return Response::text("invalid state (use start/stop)");
-        }
-    }
-    Response::text("ok")
-}
-
-// FUNCTION TO INIT EDPOINTS
+// ───────────────────────────────────────────────────────────────────────
+// FUNCTION TO INIT ENDPOINTS
 pub async fn init_routes() {
     // SERVE THE WEB FRONTEND
-    register_route("/", index_handler).await;
-    register_route("/favicon.ico", favicon_handler).await;
-    register_route("/script.js", js_handler).await;
-    // OTA
-    register_route("/api/update", ota_handler).await;        
-    // CONTROLLER ENDPOINTS
-    register_route("/api/settings/power/state/{value}", power_state_handler).await;
-    register_route("/api/settings/display/state/{value}", display_state_handler).await;
-    register_route("/api/settings/display/brightness/{value}", brightness_handler).await;
-    register_route("/api/settings/mic/volume/{value}", mic_volume_handler).await;
-    register_route("/api/settings/mic/mute/{value}", mic_mute_handler).await;
-    register_route("/api/settings/speaker/volume/{value}", speaker_volume_handler).await;
-    register_route("/api/settings/speaker/mute/{value}", speaker_mute_handler).await;
-    register_route("/api/settings/voice/state/{value}", voice_state_handler).await;     
-    register_route("/api/media/{action}", media_handler).await;
-    
-    // DATA ENDPOINTS
-    // HANDLE ALL SENSOR VALUES ON `ESP32-S3-BOX-3`
-    register_route("/api", api_list_handler).await;
-    register_route("/api/sensor/{value}", sensor_fetcher).await;
+    //tinyapi::register_route("/", crate::base::routes::index::index_handler).await;   
+   // tinyapi::register_route("/favicon.ico", crate::base::routes::index::favicon_handler).await;    
 
-    tinyapi::log!("API routes registered");
-    log!("API routes registered!")
+   // tinyapi::register_route("/www/{file}", crate::base::routes::index::serve_file_handler).await;
+
+    // ───────────────────────────────────────────────────────────────────────
+    // /API (GET)
+    // LIST AVAILABLE ENDPOINTS
+    tinyapi::register_route("/api", crate::base::routes::api::list::handle).await;
+
+    // ───────────────────────────────────────────────────────────────────────
+    // /API/PROCESS (GET)
+
+    // PROCESS A SENTENCE, EXTRACT PARAMETRS & EXECUTE
+    tinyapi::register_async_route("/api/process/{value}", crate::base::routes::api::process::sentence_handler).await;
+
+
+    // ───────────────────────────────────────────────────────────────────────
+    // /API/WEATHER (GET)
+
+    // UPDATE
+    tinyapi::register_async_route("/api/weather/update", crate::base::routes::api::weather::update::weather_handler).await;
+
+
+    // ───────────────────────────────────────────────────────────────────────
+    // /API/SETTINGS/API (GET)
+
+    // OFF
+    tinyapi::register_async_route("/api/settings/api/off", crate::base::routes::api::settings::api::off::disable_api).await;  
+
+
+
+    // ───────────────────────────────────────────────────────────────────────
+    // /API/SETTINGS/CPU (GET)
+    
+    // SET CPU FREQUENCY (80, 160, 240)
+    tinyapi::register_async_route("/api/settings/cpu/{value}", crate::base::routes::api::settings::cpu::set::cpu_handler).await;
+    
+
+    // ───────────────────────────────────────────────────────────────────────
+    // /API/SETTINGS/MIC (GET)
+    
+    // VOLUME    
+    tinyapi::register_route("/api/settings/mic/volume/{value}", crate::base::routes::api::settings::mic::volume::mic_volume_handler).await;
+    
+    // MUTE
+    tinyapi::register_route("/api/settings/mic/mute/{value}", crate::base::routes::api::settings::mic::mute::mic_mute_handler).await;
+
+
+    // ───────────────────────────────────────────────────────────────────────
+    // /API/SETTINGS/SPEAKER (GET)
+
+    // ON/OFF
+    tinyapi::register_async_route("/api/settings/speaker/{value}", crate::base::routes::api::settings::speaker::toggle::toggle_handler).await;
+    
+    // VOLUME (0-100)  
+    tinyapi::register_route("/api/settings/speaker/volume/{value}", crate::base::routes::api::settings::speaker::volume::speaker_volume_handler).await;
+
+    // MUTE (on/off)  
+    tinyapi::register_route("/api/settings/speaker/mute/{value}", crate::base::routes::api::settings::speaker::mute::speaker_mute_handler).await;  
+
+    // AMP (on/off/toggle)  
+    tinyapi::register_route("/api/settings/speaker/amp/{value}", crate::base::routes::api::settings::speaker::amp::amp_handler).await;  
+
+
+    // STREAM (on/off)
+    tinyapi::register_async_route("/api/settings/speaker/stream/{value}", crate::base::routes::api::settings::speaker::stream::stream_handler).await;  
+
+    // DING (PLAYS SOUND)
+    tinyapi::register_async_route("/api/settings/speaker/play/ding", crate::base::routes::api::settings::speaker::ding::ding_handler).await;  
+
+
+    // ───────────────────────────────────────────────────────────────────────
+    // /API/SETTINGS/VOICE (GET)
+
+    // ON/OFF/TOGGLE (THE ENTIRE PIPELINE)
+    tinyapi::register_async_route("/api/settings/voice/{value}", crate::base::routes::api::settings::voice::state::voice_handler).await;
+        
+    // WAKEWORD (on/off) 
+    tinyapi::register_async_route("/api/settings/voice/wakeword/{value}", crate::base::routes::api::settings::voice::wakeword::wake_word_handler).await;
+    
+
+    // ───────────────────────────────────────────────────────────────────────
+    // /API/SETTINGS/DISPLAY (GET)
+    
+    // BRIGHTNESS
+    tinyapi::register_route("/api/settings/display/brightness/{value}", crate::base::routes::api::settings::display::brightness::brightness_handler).await;    
+
+    // STATE (on/off/toggle)
+    tinyapi::register_async_route("/api/settings/display/state/{value}", crate::base::routes::api::settings::display::state::display_state_handler).await;
+
+    // PAGE
+    tinyapi::register_route("/api/settings/display/page/{value}", crate::base::routes::api::settings::display::page::page_handler).await;
+
+
+
+    // ───────────────────────────────────────────────────────────────────────
+    // /API/SETTINGS/VPN (GET)
+    
+    // STATE 
+    tinyapi::register_async_route("/api/settings/vpn/{val}", crate::base::routes::api::settings::vpn::state::vpn_handler).await;
+
+    // ───────────────────────────────────────────────────────────────────────
+    // /API/SETTINGS/WIFI (GET)
+    
+    // OFF 
+    tinyapi::register_route("/api/settings/wifi/off", crate::base::routes::api::settings::wifi::off::disable_wifi).await;
+
+    // SCAN
+    tinyapi::register_async_route("/api/settings/wifi/scan", crate::base::routes::api::settings::wifi::scan::scan_handler).await;
+
+
+    // ───────────────────────────────────────────────────────────────────────
+    // /API/SETTINGS/BLUETOOTH (GET)
+
+    // ... (TODO)    
+
+    // ───────────────────────────────────────────────────────────────────────
+
+
 }

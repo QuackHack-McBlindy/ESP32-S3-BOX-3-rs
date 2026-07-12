@@ -1,0 +1,26 @@
+[package]
+name = "barely-fuzzy"
+version = "0.1.1"
+authors = ["QuackHack-McBlindy"]
+description = "Fuzzy matching designed for bare metal no_std environments. Based on Levenshtein distance with heap allocation by feature, no alloc by default."
+repository = "https://github.com/QuackHack-McBlindy/barely-fuzzy"
+license = "MIT"
+readme = "README.md"
+keywords = ["similarity", "fuzzy", "levenshtein", "no-std", "embedded"]
+categories = [
+    "no-std",
+    "no-std::no-alloc",
+    "algorithms",
+    "development-tools",
+    "embedded",
+    "network-programming",
+]
+edition = "2024"
+
+
+[features]
+default = []
+alloc = []
+
+[dependencies]
+
