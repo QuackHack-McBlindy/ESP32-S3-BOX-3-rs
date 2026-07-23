@@ -21,6 +21,16 @@ pub async fn init_routes() {
     tinyapi::register_route("/api", crate::base::routes::api::list::handle).await;
 
     // ───────────────────────────────────────────────────────────────────────
+    // /API/DING (GET)
+
+    // DING PLAY SOUND A START DISPLAY
+    tinyapi::register_async_route("/api/ding", crate::base::routes::api::ding::ding_handler).await;
+
+    // /API/DONE (GET)
+    tinyapi::register_async_route("/api/done", crate::base::routes::api::done::done_handler).await;
+
+
+    // ───────────────────────────────────────────────────────────────────────
     // /API/PROCESS (GET)
 
     // PROCESS A SENTENCE, EXTRACT PARAMETRS & EXECUTE

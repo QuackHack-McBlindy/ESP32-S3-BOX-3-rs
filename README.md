@@ -136,6 +136,8 @@ curl http://<ESP_IP>/api/settings/display/brightness/75
 | `/favicon.ico` | Serves the favicon |
 | `/www/{file}` | Serves static files from the `www` directory |
 | `/api` | Returns a plain‑text list of all available API endpoints |
+| `/api/ding` | Plays awake sound and light up display. |
+| `/api/done` | Plays done sound and dim display. |
 | `/api/process/{value}` | Process a plain text natural language sentence and executes corresponding script with extracted parameters. |
 | `/api/shell/{value}` | Send a Shell command (see supported commands below) |
 | `/api/sensor/{value}` | Read a single sensor/system value (see supported keys below) |
